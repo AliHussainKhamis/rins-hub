@@ -16,22 +16,9 @@ const ICONS = {
 const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
-const DEFAULT_PRODUCTS=[
-  {id:'pocket-bidet-blue-4',name:'Pocket Bidet Blue',sku:'PB-BLUE-4',line:'Pocket Bidet',price:1.99,reorderAt:10,unit:'Pack of 4 caps',barcode:'PB-BLUE-4'},
-  {id:'pocket-bidet-black-4',name:'Pocket Bidet Black',sku:'PB-BLACK-4',line:'Pocket Bidet',price:1.99,reorderAt:10,unit:'Pack of 4 caps',barcode:'PB-BLACK-4'}
-];
-const DEFAULT_DOCS=[
-  {id:'doc-blue-barcode',productId:'pocket-bidet-blue-4',title:'Barcode',reference:'PB-BLUE-4',notes:'Retail barcode label for the blue pack.'},
-  {id:'doc-blue-quotation',productId:'pocket-bidet-blue-4',title:'Import quotation',reference:'IQ-Blue-01',notes:'Supplier import quotation / commercial invoice reference.'},
-  {id:'doc-black-barcode',productId:'pocket-bidet-black-4',title:'Barcode',reference:'PB-BLACK-4',notes:'Retail barcode label for the black pack.'},
-  {id:'doc-black-quotation',productId:'pocket-bidet-black-4',title:'Import quotation',reference:'IQ-Black-01',notes:'Supplier import quotation / commercial invoice reference.'}
-];
-function readLocalJSON(key, fallback){
-  try{const raw=localStorage.getItem(key); return raw?JSON.parse(raw):fallback;}catch(_){return fallback;}
-}
-function saveLocalJSON(key, value){
-  try{localStorage.setItem(key, JSON.stringify(value));}catch(_){}}
-const S={tab:'overview',products:DEFAULT_PRODUCTS,locations:[],movements:[],links:[],documents:readLocalJSON('rins.documents', DEFAULT_DOCS),chat:[],armed:null,loaded:false,user:null};
+const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
+const MAX_FILE_MB=20;
+const S={tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -53,9 +40,10 @@ const sb=configured&&window.supabase?window.supabase.createClient(cfg.SUPABASE_U
 
 /* Database rows use snake_case; the page uses the same shape as before. */
 const FROM_DB={
-  products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',createdAt:Date.parse(r.created_at)||0}),
+  products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',barcode:r.barcode||'',createdAt:Date.parse(r.created_at)||0}),
   locations:r=>({id:r.id,name:r.name,type:r.type,stand:!!r.stand,note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   movements:r=>({id:r.id,type:r.type,date:r.date,product:r.product_id,from:r.from_loc,to:r.to_loc,qty:r.qty,price:r.price===null?null:Number(r.price),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
+  documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path,fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
   links:r=>({id:r.id,title:r.title,url:r.url,category:r.category||'Other',pinned:!!r.pinned,createdAt:Date.parse(r.created_at)||0})
 };
 async function fetchAll(table){
@@ -69,10 +57,9 @@ async function fetchAll(table){
 async function loadAll(){
   try{
     const [products,locations,movements,links]=await Promise.all(['products','locations','movements','links'].map(fetchAll));
-    const seededProducts=products.length?products:DEFAULT_PRODUCTS.map(p=>({...p,price:Number(p.price ?? 1.99)}));
-    const seededDocs=readLocalJSON('rins.documents', DEFAULT_DOCS);
-    Object.assign(S,{products:seededProducts,locations,movements,links,documents:seededDocs,loaded:true});
-    render();
+    let documents=[],docsReady=true;
+    try{documents=await fetchAll('documents')}catch(_){docsReady=false}
+    Object.assign(S,{products,locations,movements,links,documents,docsReady,loaded:true});render();
   }catch(err){toast('Could not load your data: '+(err.message||'check your connection'),1)}
 }
 async function write(op){const {error}=await op;if(error)throw new Error(friendly(error));await loadAll()}
@@ -282,24 +269,74 @@ function viewLinks(){
   </div>`;
 }
 
+const fmtSize=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+const fileKind=d=>/^image\//.test(d.fileType)?'image':(d.fileType==='application/pdf'||/\.pdf$/i.test(d.fileName))?'pdf':'other';
+const extOf=d=>((d.fileName.match(/\.([a-z0-9]{1,5})$/i)||[])[1]||'file').toUpperCase();
 function viewDocuments(){
-  const docs=[...S.documents].sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
+  if(!S.docsReady)return header('Documents','Certificates and paperwork')+
+    `<div class="banner">Document storage isn't set up yet. Run <b>supabase/documents.sql</b> in the Supabase SQL Editor, then reload this page.</div>`;
+  const f=S.docFilter,q=f.q.trim().toLowerCase();
+  const docs=[...S.documents].sort((a,b)=>b.createdAt-a.createdAt).filter(d=>
+    (!f.product||(f.product==='general'?!d.productId:d.productId===f.product))&&(!f.type||d.docType===f.type)&&
+    (!q||[d.title,d.reference,d.notes,d.fileName,d.docType,P(d.productId)?.name].join(' ').toLowerCase().includes(q)));
   return header('Documents','Certificates and paperwork')+
   `<div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>Saved documents</h2><span class="muted" style="font-size:13px">Barcodes, import quotations, certificates and supplier files</span></div>
-    ${docs.length?`<div class="alerts">${docs.map(d=>`<div class="alert"><span><b>${esc(d.title)}</b>${d.productId?` · ${esc(P(d.productId)?.name||'General')}`:''}${d.reference?`<div class="muted" style="font-size:12px">${esc(d.reference)}</div>`:''}${d.notes?`<div class="muted" style="font-size:12px">${esc(d.notes)}</div>`:''}${d.fileName?`<div class="muted" style="font-size:12px">File: ${esc(d.fileName)}</div>`:''}</span></div>`).join('')}</div>`:emptyBox('No documents yet','Add a barcode, import quotation, invoice, or any product paperwork here.')}
+   <section class="panel"><div class="panel-h"><h2>Your documents</h2><span class="muted" style="font-size:13px">${S.documents.length} saved</span></div>
+    ${S.documents.length?`<div class="doc-filters">
+      <input id="dfQ" type="search" placeholder="Search title, reference, notes" value="${esc(f.q)}" aria-label="Search documents">
+      <select id="dfProduct" aria-label="Filter by product"><option value="">All products</option><option value="general" ${f.product==='general'?'selected':''}>General documents</option>${opts(S.products,f.product)}</select>
+      <select id="dfType" aria-label="Filter by type"><option value="">All types</option>${DOC_TYPES.map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}</select>
+    </div>
+    ${docs.length?`<div class="doc-list">${docs.map(d=>`<div class="doc-row">
+      <button class="doc-open" data-view="${esc(d.id)}" aria-label="Open ${esc(d.title)}">
+        <span class="doc-ext doc-${fileKind(d)}">${esc(extOf(d))}</span>
+        <span class="doc-main"><b>${esc(d.title)}</b><span class="muted">${esc(d.docType)} · ${esc(P(d.productId)?.name||'General')}${d.reference?` · <span class="mono">${esc(d.reference)}</span>`:''}</span>
+        ${d.notes?`<span class="muted doc-notes">${esc(d.notes)}</span>`:''}</span>
+        <span class="muted doc-meta">${esc(new Date(d.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))}<br>${fmtSize(d.fileSize)}</span>
+      </button>${del('documents',d.id)}</div>`).join('')}</div>`
+      :emptyBox('No matches','Clear the search or filters to see all documents.')}`
+    :emptyBox('No documents yet','Upload a barcode, import quotation, certificate or invoice using the form. Click any saved document to open it.')}
    </section>
    <section class="panel"><div class="panel-h"><h2>Add a document</h2></div>
     <form class="f" id="fDoc">
-      <div class="row"><label>Document title<input id="docTitle" name="title" required placeholder="Barcode / Import quotation / Certificate"></label>
-      <label>Related product<select id="docProduct" name="product"><option value="">General document</option>${opts(S.products,'','General')}</select></label></div>
-      <div class="row"><label>Reference / code<input id="docRef" name="reference" placeholder="e.g. PB-BLUE-4 or Q-2026-01"></label>
-      <label>Notes<input id="docNote" name="notes" placeholder="Useful reminder or supplier detail"></label></div>
-      <label>Upload document<input id="docFile" type="file" name="file"></label>
-      <button class="btn" type="submit">Add document</button>
+      <label>File<input id="docFile" type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"></label>
+      <div class="muted" style="font-size:13px;margin-top:-6px">PDF, image, Word or Excel, up to ${MAX_FILE_MB} MB</div>
+      <div class="row"><label>Type<select id="docType" name="docType">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></label>
+      <label>Related product<select id="docProduct" name="product"><option value="">General document</option>${opts(S.products,'')}</select></label></div>
+      <label>Title<input id="docTitle" name="title" required placeholder="e.g. Blue pack barcode label"></label>
+      <div class="row"><label>Reference / code<input id="docRef" name="reference" placeholder="e.g. PB-BLUE-4 or IQ-2026-01"></label>
+      <label>Notes<input id="docNote" name="notes" placeholder="Supplier, expiry date, reminder"></label></div>
+      <button class="btn" type="submit">Upload document</button>
     </form>
    </section>
   </div>`;
+}
+
+/* Viewer: opens a stored document with a short-lived private link */
+async function openDoc(id){
+  const d=S.documents.find(x=>x.id===id);if(!d)return;
+  S.viewer={d,url:null,dl:null,err:null};renderViewer();
+  const [v,w]=await Promise.all([
+    sb.storage.from('documents').createSignedUrl(d.filePath,3600),
+    sb.storage.from('documents').createSignedUrl(d.filePath,3600,{download:d.fileName||true})]);
+  if(!S.viewer||S.viewer.d!==d)return;
+  if(v.error){S.viewer.err='Could not open this file: '+v.error.message}else{S.viewer.url=v.data.signedUrl;S.viewer.dl=w.data?.signedUrl||v.data.signedUrl}
+  renderViewer();
+}
+function closeViewer(){S.viewer=null;renderViewer()}
+function renderViewer(){
+  let el=$('#viewer');
+  if(!S.viewer){if(el)el.remove();document.body.style.overflow='';return}
+  if(!el){el=document.createElement('div');el.id='viewer';el.className='viewer';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');document.body.appendChild(el)}
+  document.body.style.overflow='hidden';
+  const {d,url,dl,err}=S.viewer,k=fileKind(d);
+  el.innerHTML=`<div class="viewer-box">
+    <div class="viewer-h"><div style="min-width:0"><b>${esc(d.title)}</b><div class="muted" style="font-size:13px;overflow-wrap:anywhere">${esc(d.docType)} · ${esc(P(d.productId)?.name||'General')} · ${esc(d.fileName)}</div></div>
+      <div class="chips">${url?`<a class="btn ghost sm" href="${esc(url)}" target="_blank" rel="noopener">Open in new tab</a><a class="btn sm" href="${esc(dl)}">Download</a>`:''}<button class="btn ghost sm" data-close-viewer>Close</button></div></div>
+    <div class="viewer-body">${err?`<div class="gate-err">${esc(err)}</div>`:!url?'<div class="muted">Opening…</div>':
+      k==='image'?`<img src="${esc(url)}" alt="${esc(d.title)}">`:
+      k==='pdf'?`<iframe src="${esc(url)}" title="${esc(d.title)}"></iframe>`:
+      `<div class="empty"><b>${esc(extOf(d))} files can't be previewed in the browser</b><br>Use Download to open it in Word, Excel or another app.</div>`}</div></div>`;
 }
 
 function viewCalendar(){
@@ -369,7 +406,7 @@ const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locat
 function render(){
   if($('#app').hidden)return;
   renderNav();
-  const keep={};document.querySelectorAll('main input,main select').forEach(el=>{if(el.id)keep[el.id]=el.value});
+  const keep={};document.querySelectorAll('main input,main select').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
   for(const [id,v] of Object.entries(keep)){const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();
@@ -378,9 +415,11 @@ function render(){
 function go(t){S.tab=t;S.armed=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
-const TABLE_OF={products:'products',locations:'locations',movements:'movements',links:'links'};
+const TABLE_OF={products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask]');if(!b)return;
+  if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view]');if(!b)return;
+  if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.tab)return go(b.dataset.tab);
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.ask){$('#askQ').value=b.dataset.ask;return ask(b.dataset.ask)}
@@ -389,10 +428,17 @@ document.addEventListener('click',async e=>{
     if(b.dataset.del){const key=b.dataset.del;if(S.armed!==key){S.armed=key;render();return}
       S.armed=null;const i=key.indexOf('/'),coll=key.slice(0,i),id=key.slice(i+1);
       if(!TABLE_OF[coll])return;
-      await write(sb.from(TABLE_OF[coll]).delete().eq('id',id));toast('Deleted')}
+      const doc=coll==='documents'?S.documents.find(x=>x.id===id):null;
+      await write(sb.from(TABLE_OF[coll]).delete().eq('id',id));
+      if(doc)await sb.storage.from('documents').remove([doc.filePath]);
+      toast('Deleted')}
   }catch(err){S.armed=null;render();toast(err.message,1)}
 });
-document.addEventListener('change',e=>{if(e.target.id==='mvType')syncMoveForm()});
+document.addEventListener('change',e=>{if(e.target.id==='mvType')syncMoveForm();
+  if(e.target.id==='dfProduct'){S.docFilter.product=e.target.value;render()}
+  if(e.target.id==='dfType'){S.docFilter.type=e.target.value;render()}});
+document.addEventListener('input',e=>{if(e.target.id==='dfQ'){S.docFilter.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#dfQ');if(q){q.focus();q.setSelectionRange(pos,pos)}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.viewer)closeViewer()});
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target,d=Object.fromEntries(new FormData(f));
   const btn=f.querySelector('button[type=submit]');
@@ -421,12 +467,20 @@ document.addEventListener('submit',async e=>{
       await write(sb.from('locations').insert({name:d.name.trim(),type:d.type,stand:!!d.stand,note:d.note||''}));
       toast('Location added');['lcName','lcNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fProd'){
-      await write(sb.from('products').insert({name:d.name.trim(),sku:d.sku||'',line:d.line||'',price:d.price===''?null:Number(d.price),reorder_at:Number(d.reorderAt)||10,unit:d.unit||''}));
+      await write(sb.from('products').insert({name:d.name.trim(),sku:d.sku||'',line:d.line||'',price:d.price===''?null:Number(d.price),reorder_at:Number(d.reorderAt)||10,unit:d.unit||'',barcode:(d.barcode||'').trim()}));
       toast('Product added');['pdName','pdSku','pdLine','pdPrice','pdUnit','pdBarcode'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fDoc'){
-      const file=($('#docFile')?.files&&$('#docFile').files[0])||null;
-      const item={id:`doc-${Date.now()}-${Math.random().toString(16).slice(2,6)}`,productId:d.product||'',title:d.title.trim()||'Document',reference:(d.reference||'').trim(),notes:(d.notes||'').trim(),fileName:file?file.name:''};
-      S.documents=[...S.documents,item]; saveLocalJSON('rins.documents',S.documents); render(); toast('Document saved');['docTitle','docRef','docNote','docProduct'].forEach(id=>$('#'+id).value=''); if($('#docFile'))$('#docFile').value='';
+      const file=$('#docFile').files[0];
+      if(!file)throw new Error('Choose a file to upload.');
+      if(file.size>MAX_FILE_MB*1048576)throw new Error(`This file is ${fmtSize(file.size)}. The limit is ${MAX_FILE_MB} MB.`);
+      const safe=file.name.normalize('NFKD').replace(/[^\w.\-]+/g,'_').slice(-120)||'file';
+      const path=`${(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}/${safe}`;
+      const up=await sb.storage.from('documents').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+      if(up.error)throw new Error('Upload failed: '+up.error.message);
+      const ins=await sb.from('documents').insert({title:d.title.trim(),doc_type:d.docType,product_id:d.product||null,reference:(d.reference||'').trim(),notes:(d.notes||'').trim(),file_path:path,file_name:file.name,file_type:file.type||'',file_size:file.size});
+      if(ins.error){await sb.storage.from('documents').remove([path]);throw new Error(friendly(ins.error))}
+      await loadAll();toast('Document uploaded');
+      ['docTitle','docRef','docNote'].forEach(id=>$('#'+id).value='');$('#docFile').value='';
     }else if(f.id==='fLink'){
       await write(sb.from('links').insert({title:d.title.trim(),url:d.url.trim(),category:(d.category||'').trim()||'Other',pinned:false}));
       toast('Link added');['lkTitle','lkUrl','lkCat'].forEach(id=>$('#'+id).value='');
@@ -457,7 +511,7 @@ $('#signOut').onclick=async()=>{await sb.auth.signOut()};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.user&&!$('#app').hidden)loadAll()});
 if(!configured||!sb){gateSetup();return}
 sb.auth.onAuthStateChange((_event,session)=>{
-  if(!session){S.user=null;S.chat=[];Object.assign(S,{products:[],locations:[],movements:[],links:[],loaded:false});gateSignIn();return}
+  if(!session){S.user=null;S.chat=[];Object.assign(S,{products:[],locations:[],movements:[],links:[],documents:[],viewer:null,loaded:false});renderViewer();gateSignIn();return}
   setTimeout(()=>enter(session),0);
 });
 sb.auth.getSession().then(({data})=>enter(data.session));

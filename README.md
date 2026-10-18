@@ -16,6 +16,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `config.js` | Your Supabase address and public key (step 4) |
 | `assets/rins-mark.png` | Logo and browser icon |
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
+| `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
 
 ---
@@ -35,6 +36,10 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 3. Open **Table Editor**. You should see `products`, `locations`, `movements`, `links` and `hub_users`, with your 3 products, 3 locations and 2 links already in them.
 
 The script lets in `rinstravelbh@gmail.com`. To use a different address, change it in the `hub_users` table.
+
+### 2b. Set up document storage
+
+Run `supabase/documents.sql` the same way (SQL Editor > New query > paste > Run). It adds the barcode field on products, the documents table and a private storage folder for the files. Only signed-in hub users can open the files, through links that expire after an hour.
 
 ### 3. Create your login and close sign-ups
 

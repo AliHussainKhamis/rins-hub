@@ -142,3 +142,27 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .rail-foot button{all:unset;cursor:pointer;color:var(--lime);font-weight:600;margin-top:6px;display:inline-block}
 .rail-foot button:focus-visible{outline:2px solid var(--lime)}
 .rail-foot .who{display:block;overflow-wrap:anywhere}
+
+/* Documents */
+.doc-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;margin-bottom:14px}
+.doc-list{display:flex;flex-direction:column;gap:8px}
+.doc-row{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding-right:6px}
+.doc-row:hover{border-color:var(--lime)}
+.doc-open{all:unset;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:12px}
+.doc-open:focus-visible{outline:2px solid var(--lime);border-radius:10px}
+.doc-ext{flex:none;width:48px;height:48px;border-radius:8px;display:grid;place-items:center;font:600 11px var(--f-mono);letter-spacing:.5px;background:var(--line);color:var(--fg)}
+.doc-ext.doc-pdf{background:var(--bad-bg);color:var(--bad)}
+.doc-ext.doc-image{background:var(--tint);color:var(--lime-ink)}
+.doc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.doc-main b{overflow-wrap:anywhere}
+.doc-main .muted{font-size:13px;overflow-wrap:anywhere}
+.doc-notes{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.doc-meta{flex:none;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.viewer{position:fixed;inset:0;z-index:60;background:rgba(5,14,36,.72);display:grid;place-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.viewer-box{width:min(1000px,100%);height:min(88vh,100%);background:var(--panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+.viewer-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line)}
+.viewer-body{flex:1;min-height:0;display:grid;place-items:center;background:var(--bg);overflow:auto;padding:12px}
+.viewer-body iframe{width:100%;height:100%;border:0;background:#fff;border-radius:6px}
+.viewer-body img{max-width:100%;max-height:100%;object-fit:contain}
+a.btn{text-decoration:none}
+@media (max-width:760px){.doc-filters{grid-template-columns:1fr}.doc-meta{display:none}}
