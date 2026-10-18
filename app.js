@@ -16,9 +16,11 @@ const ICONS = {
 const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
+const FORMATS=['Supermarket','To Go','Pharmacy','Other'];
+const DISPLAYS={stand:'Stand',hanger:'Hanger',none:'No display'};
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={editLoc:null,tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -41,7 +43,7 @@ const sb=configured&&window.supabase?window.supabase.createClient(cfg.SUPABASE_U
 /* Database rows use snake_case; the page uses the same shape as before. */
 const FROM_DB={
   products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',barcode:r.barcode||'',createdAt:Date.parse(r.created_at)||0}),
-  locations:r=>({id:r.id,name:r.name,type:r.type,stand:!!r.stand,note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
+  locations:r=>({id:r.id,name:r.name,type:r.type,chain:r.chain||'',format:r.format||'',display:r.display||(r.stand?'stand':'none'),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   movements:r=>({id:r.id,type:r.type,date:r.date,product:r.product_id,from:r.from_loc,to:r.to_loc,qty:r.qty,price:r.price===null?null:Number(r.price),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path,fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
   links:r=>({id:r.id,title:r.title,url:r.url,category:r.category||'Other',pinned:!!r.pinned,createdAt:Date.parse(r.created_at)||0})
@@ -212,24 +214,44 @@ function viewSales(){
 }
 
 function viewLocations(){
-  const sm=stockMap(),locs=byName(S.locations);
-  return header('Locations','Where stock lives')+
+  const sm=stockMap();
+  const stockAt=id=>{let q=0;for(const p in sm)q+=(sm[p][id]||0);return q};
+  const groups={};
+  for(const l of S.locations)(groups[l.chain||(l.type==='warehouse'?'Our stock':'Other locations')]??=[]).push(l);
+  const order=Object.keys(groups).sort((a,b)=>(a==='Our stock')-(b==='Our stock')||a.localeCompare(b));
+  const fmtRank=f=>{const i=FORMATS.indexOf(f);return i<0?99:i};
+  const nStand=S.locations.filter(l=>l.display==='stand').length,nHanger=S.locations.filter(l=>l.display==='hanger').length;
+  const e=S.editLoc?S.locations.find(l=>l.id===S.editLoc):null;
+  const chains=[...new Set(S.locations.map(l=>l.chain).filter(Boolean))];
+  const v=(k,def='')=>esc(e?(e[k]??def):def);
+  return header('Locations','Where stock lives',`<div class="chips"><span class="pill p-disp-stand">${nStand} stand${nStand===1?'':'s'}</span><span class="pill p-disp-hanger">${nHanger} hanger${nHanger===1?'':'s'}</span></div>`)+
   `<div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>Locations</h2></div>
-    ${locs.length?`<div class="tbl"><table><thead><tr><th>Name</th><th>Type</th><th>Stand</th><th class="num">Stock</th><th></th></tr></thead><tbody>${locs.map(l=>{let q=0;for(const p in sm)q+=(sm[p][l.id]||0);return `<tr><td><b>${esc(l.name)}</b>${l.note?`<div class="muted" style="font-size:12px">${esc(l.note)}</div>`:''}</td><td>${esc(LOC_TYPES[l.type]||l.type)}</td><td>${l.stand?'<span class="pill p-ok">Installed</span>':'<span class="muted">None</span>'}</td><td class="num">${int(q)}</td><td class="num">${del('locations',l.id)}</td></tr>`}).join('')}</tbody></table></div>`
-    :emptyBox('No locations yet','Add your warehouse and each store that holds stock.')}
+   <div class="grid" style="align-content:start">
+   ${S.locations.length?order.map(g=>{const ls=groups[g].sort((a,b)=>fmtRank(a.format)-fmtRank(b.format)||a.name.localeCompare(b.name));
+     return `<section class="panel"><div class="panel-h"><h2>${esc(g)}</h2><span class="muted" style="font-size:13px">${ls.length} location${ls.length===1?'':'s'}</span></div>
+     <div class="tbl"><table><thead><tr><th>Branch</th><th>Format</th><th>Display</th><th class="num">Stock</th><th></th></tr></thead><tbody>${ls.map(l=>`<tr class="${S.editLoc===l.id?'row-editing':''}">
+       <td><b>${esc(l.name)}</b>${l.note?`<div class="muted" style="font-size:12px">${esc(l.note)}</div>`:''}</td>
+       <td>${esc(l.format||LOC_TYPES[l.type]||l.type)}</td>
+       <td><span class="pill p-disp-${esc(l.display)}">${esc(DISPLAYS[l.display]||'No display')}</span></td>
+       <td class="num">${int(stockAt(l.id))}</td>
+       <td class="num" style="white-space:nowrap"><button class="x" data-editloc="${esc(l.id)}">Edit</button>${del('locations',l.id)}</td></tr>`).join('')}</tbody></table></div></section>`}).join('')
+   :`<section class="panel">${emptyBox('No locations yet','Add your warehouse and each store that holds stock.')}</section>`}
+   </div>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>${e?'Edit location':'Add a location'}</h2>${e?'<button class="btn ghost sm" data-canceledit>Cancel</button>':''}</div>
+    <form class="f" id="fLoc" data-id="${e?esc(e.id):''}">
+      <label>Branch name<input id="lcName" name="name" required value="${v('name')}" placeholder="e.g. Alosra Saar"></label>
+      <div class="row"><label>Retailer / chain<input id="lcChain" name="chain" list="chainList" value="${v('chain')}" placeholder="e.g. Alosra"></label>
+      <label>Type<select id="lcType" name="type">${Object.entries(LOC_TYPES).map(([k,t])=>`<option value="${k}" ${(e?e.type:'retail')===k?'selected':''}>${t}</option>`).join('')}</select></label></div>
+      <datalist id="chainList">${chains.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      <div class="row"><label>Format<select id="lcFormat" name="format"><option value="">Not set</option>${FORMATS.map(f=>`<option ${e&&e.format===f?'selected':''}>${f}</option>`).join('')}</select></label>
+      <label>Display<select id="lcDisplay" name="display">${Object.entries(DISPLAYS).map(([k,t])=>`<option value="${k}" ${(e?e.display:'none')===k?'selected':''}>${t}</option>`).join('')}</select></label></div>
+      <label>Note<input id="lcNote" name="note" value="${v('note')}" placeholder="Contact, opening date, terms"></label>
+      <button class="btn" type="submit">${e?'Save changes':'Add location'}</button>
+    </form>
+    <p class="muted" style="font-size:13px;margin:12px 0 0">Stand: the 165 cm free-standing unit. Hanger: hanging display strip, used at To Go branches.</p>
    </section>
-   <section class="panel"><div class="panel-h"><h2>Add a location</h2></div>
-    <form class="f" id="fLoc">
-      <label>Name<input id="lcName" name="name" required placeholder="e.g. Alosra Saar"></label>
-      <div class="row"><label>Type<select id="lcType" name="type">${Object.entries(LOC_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
-      <label>Display stand<select id="lcStand" name="stand"><option value="">No</option><option value="1">Yes, installed</option></select></label></div>
-      <label>Note<input id="lcNote" name="note" placeholder="Contact, branch, terms"></label>
-      <button class="btn" type="submit">Add location</button>
-    </form></section>
   </div>`;
 }
-
 function viewProducts(){
   const prods=byName(S.products);
   return header('Products','Product list')+
@@ -408,18 +430,21 @@ function render(){
   renderNav();
   const keep={};document.querySelectorAll('main input,main select').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
-  for(const [id,v] of Object.entries(keep)){const el=document.getElementById(id);if(el&&v!=='')el.value=v}
+  const locFormChanged=S._locFormFor!==S.editLoc;S._locFormFor=S.editLoc;
+  for(const [id,v] of Object.entries(keep)){if(locFormChanged&&/^lc/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.tab=t;S.armed=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.tab=t;S.armed=null;S.editLoc=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
 const TABLE_OF={products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view]');if(!b)return;
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
+  if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
+  if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
   if(b.dataset.tab)return go(b.dataset.tab);
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.ask){$('#askQ').value=b.dataset.ask;return ask(b.dataset.ask)}
@@ -464,7 +489,10 @@ document.addEventListener('submit',async e=>{
       await write(sb.from('movements').insert({type:'sale',date:d.date,product_id:d.product,from_loc:d.from,qty:Number(d.qty),price,note:d.note||''}));
       toast('Sale saved');['slQty','slPrice','slNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fLoc'){
-      await write(sb.from('locations').insert({name:d.name.trim(),type:d.type,stand:!!d.stand,note:d.note||''}));
+      const row={name:d.name.trim(),chain:(d.chain||'').trim(),type:d.type,format:d.format||'',display:d.display||'none',stand:d.display==='stand',note:(d.note||'').trim()};
+      const id=f.dataset.id;
+      if(id){await write(sb.from('locations').update(row).eq('id',id));S.editLoc=null;render();toast('Location updated');return}
+      await write(sb.from('locations').insert(row));
       toast('Location added');['lcName','lcNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fProd'){
       await write(sb.from('products').insert({name:d.name.trim(),sku:d.sku||'',line:d.line||'',price:d.price===''?null:Number(d.price),reorder_at:Number(d.reorderAt)||10,unit:d.unit||'',barcode:(d.barcode||'').trim()}));

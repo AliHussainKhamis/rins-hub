@@ -166,3 +166,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .viewer-body img{max-width:100%;max-height:100%;object-fit:contain}
 a.btn{text-decoration:none}
 @media (max-width:760px){.doc-filters{grid-template-columns:1fr}.doc-meta{display:none}}
+
+/* Location displays */
+.p-disp-stand{background:var(--navy);color:var(--lime)}
+.p-disp-hanger{background:var(--tint);color:var(--lime-ink)}
+.p-disp-none{background:var(--line);color:var(--muted)}
+tr.row-editing td{background:var(--tint)}
+.x[data-editloc]:hover{background:var(--line);color:var(--fg)}
+td .x{font-family:var(--f-body)}

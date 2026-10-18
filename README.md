@@ -17,6 +17,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `assets/rins-mark.png` | Logo and browser icon |
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
+| `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
 
 ---
@@ -40,6 +41,10 @@ The script lets in `rinstravelbh@gmail.com`. To use a different address, change 
 ### 2b. Set up document storage
 
 Run `supabase/documents.sql` the same way (SQL Editor > New query > paste > Run). It adds the barcode field on products, the documents table and a private storage folder for the files. Only signed-in hub users can open the files, through links that expire after an hour.
+
+### 2c. Set up location details
+
+Run `supabase/locations.sql` the same way. It adds the retailer, format (Supermarket, To Go) and display (Stand, Hanger) fields to locations, and adds the six Alosra supermarkets with stands.
 
 ### 3. Create your login and close sign-ups
 

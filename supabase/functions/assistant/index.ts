@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     today: new Date().toISOString().slice(0, 10),
     currency: "BHD",
     products: products.map((p) => ({ name: p.name, sku: p.sku, line: p.line, price: p.price, unit: p.unit })),
-    locations: locations.map((l) => ({ name: l.name, type: l.type, stand: l.stand })),
+    locations: locations.map((l) => ({ name: l.name, chain: l.chain, type: l.type, format: l.format, display: l.display })),
     stock: stockRows,
     sales,
   };
