@@ -7,13 +7,31 @@ const ICONS = {
   sales:'<path d="M3 17l6-6 4 4 8-8v4h2V3h-8v2h4l-6 6-4-4-8 8z"/><path d="M3 21h18v-2H3z"/>',
   locations:'<path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>',
   products:'<path d="M20 7h-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM10 5h4v2h-4z"/>',
+  documents:'<path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7zm1 7h-4V5h4zm-8 6h8v2H7zm0-4h10v2H7z"/>',
+  calendar:'<path d="M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3zm13 8H4v10h16zM4 10h16V6H4z"/>',
+  analysis:'<path d="M4 18h16v2H4zm2-4h2v4H6zm4-6h2v10h-2zm4 3h2v7h-2zm4-8h2v15h-2z"/>',
   links:'<path d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 1 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 1 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 1 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/>',
   assistant:'<path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2zM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1z"/>'
 };
-const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['products','Products'],['links','Links'],['assistant','Assistant']];
+const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
-const S={tab:'overview',products:[],locations:[],movements:[],links:[],chat:[],armed:null,loaded:false,user:null};
+const DEFAULT_PRODUCTS=[
+  {id:'pocket-bidet-blue-4',name:'Pocket Bidet Blue',sku:'PB-BLUE-4',line:'Pocket Bidet',price:1.99,reorderAt:10,unit:'Pack of 4 caps',barcode:'PB-BLUE-4'},
+  {id:'pocket-bidet-black-4',name:'Pocket Bidet Black',sku:'PB-BLACK-4',line:'Pocket Bidet',price:1.99,reorderAt:10,unit:'Pack of 4 caps',barcode:'PB-BLACK-4'}
+];
+const DEFAULT_DOCS=[
+  {id:'doc-blue-barcode',productId:'pocket-bidet-blue-4',title:'Barcode',reference:'PB-BLUE-4',notes:'Retail barcode label for the blue pack.'},
+  {id:'doc-blue-quotation',productId:'pocket-bidet-blue-4',title:'Import quotation',reference:'IQ-Blue-01',notes:'Supplier import quotation / commercial invoice reference.'},
+  {id:'doc-black-barcode',productId:'pocket-bidet-black-4',title:'Barcode',reference:'PB-BLACK-4',notes:'Retail barcode label for the black pack.'},
+  {id:'doc-black-quotation',productId:'pocket-bidet-black-4',title:'Import quotation',reference:'IQ-Black-01',notes:'Supplier import quotation / commercial invoice reference.'}
+];
+function readLocalJSON(key, fallback){
+  try{const raw=localStorage.getItem(key); return raw?JSON.parse(raw):fallback;}catch(_){return fallback;}
+}
+function saveLocalJSON(key, value){
+  try{localStorage.setItem(key, JSON.stringify(value));}catch(_){}}
+const S={tab:'overview',products:DEFAULT_PRODUCTS,locations:[],movements:[],links:[],documents:readLocalJSON('rins.documents', DEFAULT_DOCS),chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -51,7 +69,10 @@ async function fetchAll(table){
 async function loadAll(){
   try{
     const [products,locations,movements,links]=await Promise.all(['products','locations','movements','links'].map(fetchAll));
-    Object.assign(S,{products,locations,movements,links,loaded:true});render();
+    const seededProducts=products.length?products:DEFAULT_PRODUCTS.map(p=>({...p,price:Number(p.price ?? 1.99)}));
+    const seededDocs=readLocalJSON('rins.documents', DEFAULT_DOCS);
+    Object.assign(S,{products:seededProducts,locations,movements,links,documents:seededDocs,loaded:true});
+    render();
   }catch(err){toast('Could not load your data: '+(err.message||'check your connection'),1)}
 }
 async function write(op){const {error}=await op;if(error)throw new Error(friendly(error));await loadAll()}
@@ -227,7 +248,7 @@ function viewProducts(){
   return header('Products','Product list')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Products</h2></div>
-    ${prods.length?`<div class="tbl"><table><thead><tr><th>Product</th><th>SKU</th><th>Line</th><th class="num">Price BHD</th><th class="num">Reorder at</th><th></th></tr></thead><tbody>${prods.map(p=>`<tr><td><b>${esc(p.name)}</b>${p.unit?`<div class="muted" style="font-size:12px">${esc(p.unit)}</div>`:''}</td><td class="mono">${esc(p.sku||'—')}</td><td>${esc(p.line)}</td><td class="num">${p.price!==null?bhd(p.price):'<span class="muted">Not set</span>'}</td><td class="num">${int(p.reorderAt??10)}</td><td class="num">${del('products',p.id)}</td></tr>`).join('')}</tbody></table></div>`
+    ${prods.length?`<div class="tbl"><table><thead><tr><th>Product</th><th>SKU</th><th>Line</th><th class="num">Price BHD</th><th class="num">Reorder at</th><th></th></tr></thead><tbody>${prods.map(p=>`<tr><td><b>${esc(p.name)}</b>${p.unit?`<div class="muted" style="font-size:12px">${esc(p.unit)}</div>`:''}${p.barcode?`<div class="muted mono" style="font-size:12px">Barcode: ${esc(p.barcode)}</div>`:''}</td><td class="mono">${esc(p.sku||'—')}</td><td>${esc(p.line)}</td><td class="num">${p.price!==null?bhd(p.price):'<span class="muted">Not set</span>'}</td><td class="num">${int(p.reorderAt??10)}</td><td class="num">${del('products',p.id)}</td></tr>`).join('')}</tbody></table></div>`
     :emptyBox('No products yet','Add each item you sell, one row per colour or pack size.')}
    </section>
    <section class="panel"><div class="panel-h"><h2>Add a product</h2></div>
@@ -235,9 +256,10 @@ function viewProducts(){
       <label>Name<input id="pdName" name="name" required placeholder="e.g. Pocket Bidet, black, 4-pack"></label>
       <div class="row"><label>SKU<input id="pdSku" name="sku" placeholder="Optional"></label>
       <label>Line<input id="pdLine" name="line" placeholder="Pocket Bidet / Classic Fusion"></label></div>
-      <div class="row"><label>Retail price (BHD)<input id="pdPrice" type="number" name="price" min="0" step="0.001"></label>
+      <div class="row"><label>Retail price (BHD)<input id="pdPrice" type="number" name="price" min="0" step="0.001" value="1.99"></label>
       <label>Reorder at (units)<input id="pdReorder" type="number" name="reorderAt" min="0" step="1" value="10"></label></div>
-      <label>Pack / unit<input id="pdUnit" name="unit" placeholder="e.g. Pouch of 4 caps"></label>
+      <div class="row"><label>Barcode<input id="pdBarcode" name="barcode" placeholder="Optional barcode"></label>
+      <label>Pack / unit<input id="pdUnit" name="unit" placeholder="e.g. Pouch of 4 caps"></label></div>
       <button class="btn" type="submit">Add product</button>
     </form></section>
   </div>`;
@@ -257,6 +279,67 @@ function viewLinks(){
       <label>Web address<input id="lkUrl" name="url" type="url" required placeholder="https://"></label>
       <button class="btn" type="submit">Add link</button>
     </form></section>
+  </div>`;
+}
+
+function viewDocuments(){
+  const docs=[...S.documents].sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
+  return header('Documents','Certificates and paperwork')+
+  `<div class="grid g-side">
+   <section class="panel"><div class="panel-h"><h2>Saved documents</h2><span class="muted" style="font-size:13px">Barcodes, import quotations, certificates and supplier files</span></div>
+    ${docs.length?`<div class="alerts">${docs.map(d=>`<div class="alert"><span><b>${esc(d.title)}</b>${d.productId?` · ${esc(P(d.productId)?.name||'General')}`:''}${d.reference?`<div class="muted" style="font-size:12px">${esc(d.reference)}</div>`:''}${d.notes?`<div class="muted" style="font-size:12px">${esc(d.notes)}</div>`:''}${d.fileName?`<div class="muted" style="font-size:12px">File: ${esc(d.fileName)}</div>`:''}</span></div>`).join('')}</div>`:emptyBox('No documents yet','Add a barcode, import quotation, invoice, or any product paperwork here.')}
+   </section>
+   <section class="panel"><div class="panel-h"><h2>Add a document</h2></div>
+    <form class="f" id="fDoc">
+      <div class="row"><label>Document title<input id="docTitle" name="title" required placeholder="Barcode / Import quotation / Certificate"></label>
+      <label>Related product<select id="docProduct" name="product"><option value="">General document</option>${opts(S.products,'','General')}</select></label></div>
+      <div class="row"><label>Reference / code<input id="docRef" name="reference" placeholder="e.g. PB-BLUE-4 or Q-2026-01"></label>
+      <label>Notes<input id="docNote" name="notes" placeholder="Useful reminder or supplier detail"></label></div>
+      <label>Upload document<input id="docFile" type="file" name="file"></label>
+      <button class="btn" type="submit">Add document</button>
+    </form>
+   </section>
+  </div>`;
+}
+
+function viewCalendar(){
+  const today=new Date(); const year=today.getFullYear(); const monthIndex=today.getMonth();
+  const first=new Date(year,monthIndex,1); const startDay=(first.getDay()+6)%7; const daysInMonth=new Date(year,monthIndex+1,0).getDate();
+  const actionMap={};
+  for(const v of S.movements){const d=(v.date||'').trim(); if(d){actionMap[d]=(actionMap[d]||0)+1;}}
+  const cells=[]; for(let i=0;i<startDay;i++)cells.push(''); for(let d=1;d<=daysInMonth;d++)cells.push(String(d));
+  while(cells.length%7!==0)cells.push('');
+  const rows=[]; for(let i=0;i<cells.length;i+=7)rows.push(cells.slice(i,i+7));
+  const monthName=new Date(year,monthIndex).toLocaleString('en-US',{month:'long',year:'numeric'});
+  return header('Calendar','Main actions this month')+
+  `<div class="grid g-side">
+   <section class="panel"><div class="panel-h"><h2>${esc(monthName)}</h2></div>
+    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="cal-head">${d}</div>`).join('')}${rows.flatMap(w=>w.map(day=>{
+      if(!day){return '<div class="cal-day empty"></div>'}
+      const key=`${year}-${String(monthIndex+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; const count=actionMap[key]||0;
+      return `<div class="cal-day ${count?'has':''}"><span class="cal-date">${day}</span>${count?`<span class="pill p-ok">${int(count)} action${count===1?'':'s'}</span>`:''}</div>`;
+    })).join('')}</div>
+   </section>
+   <section class="panel"><div class="panel-h"><h2>Recent actions</h2></div>
+    ${S.movements.length?`<div class="alerts">${[...S.movements].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.createdAt-a.createdAt).slice(0,8).map(v=>`<div class="alert"><span><b>${esc(TYPE_LABEL[v.type]||v.type)}</b> · ${esc(P(v.product)?.name||'Unknown')}</span><span class="muted">${esc(v.date)}</span></div>`).join('')}</div>`:emptyBox('No actions yet','Record sales or stock movements and they will appear here.')}
+   </section>
+  </div>`;
+}
+
+function viewAnalysis(){
+  return header('Analysis','Business analysis')+
+  `<div class="grid g-side">
+   <section class="panel"><div class="panel-h"><h2>Analysis</h2></div>
+    <div class="empty"><b>Analysis coming soon</b><br>We will add more dashboards, trends and stock insights here as the hub grows.</div>
+   </section>
+   <section class="panel"><div class="panel-h"><h2>Planned insight areas</h2></div>
+    <ul class="roadmap" style="padding-left:18px;margin:0">
+      <li>Best-selling products and product lines</li>
+      <li>Low stock warnings and reorder recommendations</li>
+      <li>Store-by-store sales trends</li>
+      <li>Monthly revenue and movement summaries</li>
+    </ul>
+   </section>
   </div>`;
 }
 
@@ -282,7 +365,7 @@ function viewAssistant(){
   </div>`;
 }
 
-const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,links:viewLinks,assistant:viewAssistant};
+const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,documents:viewDocuments,calendar:viewCalendar,analysis:viewAnalysis,links:viewLinks,assistant:viewAssistant};
 function render(){
   if($('#app').hidden)return;
   renderNav();
@@ -339,7 +422,11 @@ document.addEventListener('submit',async e=>{
       toast('Location added');['lcName','lcNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fProd'){
       await write(sb.from('products').insert({name:d.name.trim(),sku:d.sku||'',line:d.line||'',price:d.price===''?null:Number(d.price),reorder_at:Number(d.reorderAt)||10,unit:d.unit||''}));
-      toast('Product added');['pdName','pdSku','pdLine','pdPrice','pdUnit'].forEach(id=>$('#'+id).value='');
+      toast('Product added');['pdName','pdSku','pdLine','pdPrice','pdUnit','pdBarcode'].forEach(id=>$('#'+id).value='');
+    }else if(f.id==='fDoc'){
+      const file=($('#docFile')?.files&&$('#docFile').files[0])||null;
+      const item={id:`doc-${Date.now()}-${Math.random().toString(16).slice(2,6)}`,productId:d.product||'',title:d.title.trim()||'Document',reference:(d.reference||'').trim(),notes:(d.notes||'').trim(),fileName:file?file.name:''};
+      S.documents=[...S.documents,item]; saveLocalJSON('rins.documents',S.documents); render(); toast('Document saved');['docTitle','docRef','docNote','docProduct'].forEach(id=>$('#'+id).value=''); if($('#docFile'))$('#docFile').value='';
     }else if(f.id==='fLink'){
       await write(sb.from('links').insert({title:d.title.trim(),url:d.url.trim(),category:(d.category||'').trim()||'Other',pinned:false}));
       toast('Link added');['lkTitle','lkUrl','lkCat'].forEach(id=>$('#'+id).value='');
