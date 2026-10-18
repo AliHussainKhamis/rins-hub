@@ -185,13 +185,34 @@ function syncMoveForm(){const t=$('#mvType')?.value;if(!t)return;$('#mvHelp').te
   $('#mvFromL').hidden=t==='in';$('#mvToL').hidden=t==='adjust';$('#mvFromL span').textContent=t==='adjust'?'Location':'From';
   $('#mvQty').min=t==='adjust'?'':'1'}
 
+/* One quantity box per product; prices come from the product list */
+function saleLines(){
+  const prods=byName(S.products);
+  if(!prods.length)return emptyBox('No products yet','Add products on the Products page and they appear here automatically.');
+  const sm=stockMap(),loc=$('#slFrom')?.value||'';
+  return `<div class="sale-lines"><div class="sale-head"><span>Product</span><span class="num">Price</span><span class="num">Qty</span><span class="num">Total</span></div>
+    ${prods.map(p=>{const priced=p.price!==null&&p.price!==undefined;const have=loc?((sm[p.id]||{})[loc]||0):null;
+      return `<div class="sale-line${priced?'':' unpriced'}">
+        <span class="sl-name"><b>${esc(p.name)}</b>${p.unit?`<span class="muted">${esc(p.unit)}</span>`:''}${have!==null?`<span class="${have<0?'cell-out':'muted'}">${int(have)} in stock here</span>`:''}</span>
+        <span class="num">${priced?bhd(p.price):'<span class="muted">No price</span>'}</span>
+        ${priced?`<input id="slq-${esc(p.id)}" class="sl-qty" data-price="${p.price}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" aria-label="Quantity of ${esc(p.name)}">`
+          :`<button type="button" class="x" data-go="products" title="Set a price on the Products page">Set price</button>`}
+        <span class="num sl-total" data-for="slq-${esc(p.id)}">–</span></div>`}).join('')}
+    <div class="sale-sum"><span>Total</span><span class="num" id="slSum">0 units · 0.000 BHD</span></div></div>`;
+}
+function updateSaleTotals(){
+  let u=0,t=0;
+  document.querySelectorAll('.sl-qty').forEach(i=>{const q=Math.max(0,Math.floor(Number(i.value)||0)),line=q*Number(i.dataset.price);
+    const cell=document.querySelector(`.sl-total[data-for="${i.id}"]`);if(cell)cell.textContent=q?bhd(line):'–';u+=q;t+=line});
+  const sum=$('#slSum');if(sum)sum.textContent=`${int(u)} unit${u===1?'':'s'} · ${bhd(t)} BHD`;
+}
 function viewSales(){
   const all=sales().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.createdAt-a.createdAt);
   const ms=all.filter(v=>(v.date||'').startsWith(month()));
   const byLoc={};for(const v of ms){const k=v.from||'?';byLoc[k]??={u:0,r:0};byLoc[k].u+=Number(v.qty)||0;byLoc[k].r+=saleValue(v)}
   const rows=Object.entries(byLoc).sort((a,b)=>b[1].r-a[1].r),max=Math.max(1,...rows.map(r=>r[1].r));
   return header('Sales','Sales tracking')+
-  `<div class="grid g-side">
+  `<div class="grid g-sale">
    <section class="panel"><div class="panel-h"><h2>Sales this month by location</h2></div>
     ${rows.length?`<div class="tbl"><table><thead><tr><th>Location</th><th>Share</th><th class="num">Units</th><th class="num">BHD</th></tr></thead><tbody>${rows.map(([k,o])=>`<tr><td><b>${esc(L(k)?.name||'Unknown')}</b><div class="muted" style="font-size:12px">${esc(LOC_TYPES[L(k)?.type]||'')}</div></td><td style="width:30%"><div class="bar"><i style="width:${(o.r/max*100).toFixed(1)}%"></i></div></td><td class="num">${int(o.u)}</td><td class="num">${bhd(o.r)}</td></tr>`).join('')}</tbody></table></div>`
     :emptyBox('No sales this month yet','Record a sale on the right.')}
@@ -200,9 +221,7 @@ function viewSales(){
     <form class="f" id="fSale">
       <div class="row"><label>Date<input id="slDate" type="date" name="date" value="${today()}" required></label>
       <label>Sold at<select id="slFrom" name="from" required>${opts(S.locations,'','Choose')}</select></label></div>
-      <label>Product<select id="slProd" name="product" required>${opts(S.products,'','Choose')}</select></label>
-      <div class="row"><label>Quantity<input id="slQty" type="number" name="qty" min="1" step="1" required></label>
-      <label>Unit price (BHD)<input id="slPrice" type="number" name="price" min="0" step="0.001" placeholder="Uses product price"></label></div>
+      ${saleLines()}
       <label>Note<input id="slNote" name="note" placeholder="Invoice or report reference"></label>
       <button class="btn" type="submit">Save sale</button>
     </form></section>
@@ -432,7 +451,7 @@ function render(){
   $('#main').innerHTML=VIEWS[S.tab]();
   const locFormChanged=S._locFormFor!==S.editLoc;S._locFormFor=S.editLoc;
   for(const [id,v] of Object.entries(keep)){if(locFormChanged&&/^lc/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
-  syncMoveForm();
+  syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
 function go(t){S.tab=t;S.armed=null;S.editLoc=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
@@ -460,9 +479,10 @@ document.addEventListener('click',async e=>{
   }catch(err){S.armed=null;render();toast(err.message,1)}
 });
 document.addEventListener('change',e=>{if(e.target.id==='mvType')syncMoveForm();
+  if(e.target.id==='slFrom')render();
   if(e.target.id==='dfProduct'){S.docFilter.product=e.target.value;render()}
   if(e.target.id==='dfType'){S.docFilter.type=e.target.value;render()}});
-document.addEventListener('input',e=>{if(e.target.id==='dfQ'){S.docFilter.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#dfQ');if(q){q.focus();q.setSelectionRange(pos,pos)}}});
+document.addEventListener('input',e=>{if(e.target.classList.contains('sl-qty'))updateSaleTotals();if(e.target.id==='dfQ'){S.docFilter.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#dfQ');if(q){q.focus();q.setSelectionRange(pos,pos)}}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.viewer)closeViewer()});
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target,d=Object.fromEntries(new FormData(f));
@@ -485,9 +505,13 @@ document.addEventListener('submit',async e=>{
       await write(sb.from('movements').insert({type:d.type,date:d.date,product_id:d.product,from_loc:d.type==='in'?null:d.from,to_loc:d.type==='adjust'?null:d.to,qty,note:d.note||''}));
       toast(TYPE_LABEL[d.type]+' saved');['mvQty','mvNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fSale'){
-      const p=P(d.product),price=d.price!==''?Number(d.price):(p?.price??0);
-      await write(sb.from('movements').insert({type:'sale',date:d.date,product_id:d.product,from_loc:d.from,qty:Number(d.qty),price,note:d.note||''}));
-      toast('Sale saved');['slQty','slPrice','slNote'].forEach(id=>$('#'+id).value='');
+      const rows=[...document.querySelectorAll('.sl-qty')].map(i=>({id:i.id.slice(4),q:Math.floor(Number(i.value)||0)})).filter(x=>x.q>0)
+        .map(x=>({type:'sale',date:d.date,product_id:x.id,from_loc:d.from,qty:x.q,price:P(x.id)?.price??0,note:(d.note||'').trim()}));
+      if(!rows.length)throw new Error('Enter a quantity for at least one product.');
+      await write(sb.from('movements').insert(rows));
+      const units=rows.reduce((a,r)=>a+r.qty,0),total=rows.reduce((a,r)=>a+r.qty*r.price,0);
+      document.querySelectorAll('.sl-qty').forEach(i=>i.value='');$('#slNote').value='';render();
+      toast(`Sale saved: ${int(units)} unit${units===1?'':'s'}, ${bhd(total)} BHD`);
     }else if(f.id==='fLoc'){
       const row={name:d.name.trim(),chain:(d.chain||'').trim(),type:d.type,format:d.format||'',display:d.display||'none',stand:d.display==='stand',note:(d.note||'').trim()};
       const id=f.dataset.id;

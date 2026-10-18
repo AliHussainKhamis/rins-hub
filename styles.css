@@ -174,3 +174,19 @@ a.btn{text-decoration:none}
 tr.row-editing td{background:var(--tint)}
 .x[data-editloc]:hover{background:var(--line);color:var(--fg)}
 td .x{font-family:var(--f-body)}
+
+/* Record a sale: one line per product */
+.sale-lines{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.sale-head,.sale-line,.sale-sum{display:grid;grid-template-columns:minmax(0,1fr) 64px 72px 72px;gap:10px;align-items:center;padding:10px 12px}
+.sale-head{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+.sale-line{border-top:1px solid var(--line)}
+.sale-line.unpriced{background:var(--warn-bg)}
+.sl-name{display:flex;flex-direction:column;min-width:0;font-size:14px}
+.sl-name b{overflow-wrap:anywhere}
+.sl-name .muted{font-size:12px}
+.sl-qty{text-align:right;padding:7px 8px}
+.sale-sum{border-top:1px solid var(--line);background:var(--navy);color:#fff;font-weight:600}
+.sale-sum .num{grid-column:2 / -1;color:var(--lime)}
+.g-sale{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+@media (max-width:980px){.g-sale{grid-template-columns:1fr}}
+.sl-name .cell-out{font-size:12px}
