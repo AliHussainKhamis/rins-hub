@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>RINS Hub</title>
+<link rel="icon" type="image/png" href="assets/rins-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>html,body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<section class="gate" id="gate" hidden>
+  <div class="gate-card">
+    <div class="brand"><img alt="" src="assets/rins-mark.png" style="background:var(--navy);border-radius:50%;padding:3px"><div><b>rins</b><small>Operations hub</small></div></div>
+    <div id="gateBody"></div>
+  </div>
+</section>
+
+<div class="app" id="app" hidden>
+  <aside class="rail">
+    <div class="brand"><img alt="" src="assets/rins-mark.png"><div><b>rins</b><small>Operations hub</small></div></div>
+    <nav id="nav" aria-label="Sections"></nav>
+    <div class="rail-foot"><span class="who" id="who"></span><button type="button" id="signOut">Sign out</button></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
