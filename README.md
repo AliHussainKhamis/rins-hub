@@ -17,6 +17,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `assets/rins-mark.png` | Logo and browser icon |
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
+| `supabase/products-distributors.sql` | Adds product photos and the distributors table (step 2d) |
 | `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
 
@@ -45,6 +46,10 @@ Run `supabase/documents.sql` the same way (SQL Editor > New query > paste > Run)
 ### 2c. Set up location details
 
 Run `supabase/locations.sql` the same way. It adds the retailer, format (Supermarket, To Go) and display (Stand, Hanger) fields to locations, and adds the six Alosra supermarkets with stands.
+
+### 2d. Set up product photos and distributors
+
+Run `supabase/products-distributors.sql` the same way. It adds the photo field on products and the distributors table. Product photos are stored in the same private storage folder as documents, so run `documents.sql` first.
 
 ### 3. Create your login and close sign-ups
 

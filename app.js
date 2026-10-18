@@ -7,20 +7,22 @@ const ICONS = {
   sales:'<path d="M3 17l6-6 4 4 8-8v4h2V3h-8v2h4l-6 6-4-4-8 8z"/><path d="M3 21h18v-2H3z"/>',
   locations:'<path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>',
   products:'<path d="M20 7h-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM10 5h4v2h-4z"/>',
+  distributors:'<path d="M3 5h11v9H3zm11 3h4l3 3v3h-7zM6.5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
   documents:'<path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7zm1 7h-4V5h4zm-8 6h8v2H7zm0-4h10v2H7z"/>',
   calendar:'<path d="M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3zm13 8H4v10h16zM4 10h16V6H4z"/>',
   analysis:'<path d="M4 18h16v2H4zm2-4h2v4H6zm4-6h2v10h-2zm4 3h2v7h-2zm4-8h2v15h-2z"/>',
   links:'<path d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 1 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 1 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 1 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/>',
   assistant:'<path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2zM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1z"/>'
 };
-const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
+const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['distributors','Distributors'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
 const FORMATS=['Supermarket','To Go','Pharmacy','Other'];
 const DISPLAYS={stand:'Stand',hanger:'Hanger',none:'No display'};
+const DIST_STATUSES=['Prospect','Contacted','Negotiating','Active','Paused'];
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={editLoc:null,tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -42,10 +44,11 @@ const sb=configured&&window.supabase?window.supabase.createClient(cfg.SUPABASE_U
 
 /* Database rows use snake_case; the page uses the same shape as before. */
 const FROM_DB={
-  products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',barcode:r.barcode||'',createdAt:Date.parse(r.created_at)||0}),
+  products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',barcode:r.barcode||'',imagePath:r.image_path||'',createdAt:Date.parse(r.created_at)||0}),
   locations:r=>({id:r.id,name:r.name,type:r.type,chain:r.chain||'',format:r.format||'',display:r.display||(r.stand?'stand':'none'),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   movements:r=>({id:r.id,type:r.type,date:r.date,product:r.product_id,from:r.from_loc,to:r.to_loc,qty:r.qty,price:r.price===null?null:Number(r.price),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path,fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
+  distributors:r=>({id:r.id,name:r.name,country:r.country||'',city:r.city||'',contact:r.contact_name||'',phone:r.phone||'',email:r.email||'',status:r.status||'Prospect',terms:r.terms||'',lastContact:r.last_contact||'',nextStep:r.next_step||'',notes:r.notes||'',createdAt:Date.parse(r.created_at)||0}),
   links:r=>({id:r.id,title:r.title,url:r.url,category:r.category||'Other',pinned:!!r.pinned,createdAt:Date.parse(r.created_at)||0})
 };
 async function fetchAll(table){
@@ -56,12 +59,40 @@ async function fetchAll(table){
   }
   return out.map(FROM_DB[table]);
 }
+/* Product photos live privately in the documents storage folder; show them with short-lived links */
+async function signProductImages(products){
+  const paths=[...new Set(products.map(p=>p.imagePath).filter(Boolean))].filter(x=>!S.imgUrls[x]||S.imgUrls[x].exp<Date.now()+300000);
+  if(!paths.length)return;
+  const {data,error}=await sb.storage.from('documents').createSignedUrls(paths,3600);
+  if(error||!data)return;
+  for(const r of data)if(r.signedUrl)S.imgUrls[r.path]={url:r.signedUrl,exp:Date.now()+3600000};
+}
+const initials=n=>String(n||'?').split(/\s+/).filter(w=>/^[a-z0-9]/i.test(w)).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';
+function productThumb(p,cls='thumb'){
+  const u=p.imagePath&&S.imgUrls[p.imagePath]?.url;
+  return u?`<img class="${cls}" src="${esc(u)}" alt="${esc(p.name)}" loading="lazy">`
+    :`<span class="${cls} thumb-ph" aria-label="No photo yet"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h3l2-2h6l2 2h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 3.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg><b>${esc(initials(p.name))}</b></span>`;
+}
+async function uploadProductPhoto(productId,file){
+  if(!/^image\//.test(file.type))throw new Error('Choose an image file (JPG, PNG or WebP).');
+  if(file.size>MAX_FILE_MB*1048576)throw new Error(`This photo is ${fmtSize(file.size)}. The limit is ${MAX_FILE_MB} MB.`);
+  const safe=file.name.normalize('NFKD').replace(/[^\w.\-]+/g,'_').slice(-80)||'photo';
+  const path=`product-photos/${productId}/${Date.now().toString(36)}-${safe}`;
+  const up=await sb.storage.from('documents').upload(path,file,{contentType:file.type,upsert:false});
+  if(up.error)throw new Error('Photo upload failed: '+up.error.message);
+  const old=P(productId)?.imagePath;
+  const {error}=await sb.from('products').update({image_path:path}).eq('id',productId);
+  if(error){await sb.storage.from('documents').remove([path]);throw new Error(friendly(error))}
+  if(old)await sb.storage.from('documents').remove([old]);
+}
 async function loadAll(){
   try{
     const [products,locations,movements,links]=await Promise.all(['products','locations','movements','links'].map(fetchAll));
-    let documents=[],docsReady=true;
+    let documents=[],docsReady=true,distributors=[],distReady=true;
     try{documents=await fetchAll('documents')}catch(_){docsReady=false}
-    Object.assign(S,{products,locations,movements,links,documents,docsReady,loaded:true});render();
+    try{distributors=await fetchAll('distributors')}catch(_){distReady=false}
+    await signProductImages(products);
+    Object.assign(S,{products,locations,movements,links,documents,docsReady,distributors,distReady,loaded:true});render();
   }catch(err){toast('Could not load your data: '+(err.message||'check your connection'),1)}
 }
 async function write(op){const {error}=await op;if(error)throw new Error(friendly(error));await loadAll()}
@@ -193,7 +224,7 @@ function saleLines(){
   return `<div class="sale-lines"><div class="sale-head"><span>Product</span><span class="num">Price</span><span class="num">Qty</span><span class="num">Total</span></div>
     ${prods.map(p=>{const priced=p.price!==null&&p.price!==undefined;const have=loc?((sm[p.id]||{})[loc]||0):null;
       return `<div class="sale-line${priced?'':' unpriced'}">
-        <span class="sl-name"><b>${esc(p.name)}</b>${p.unit?`<span class="muted">${esc(p.unit)}</span>`:''}${have!==null?`<span class="${have<0?'cell-out':'muted'}">${int(have)} in stock here</span>`:''}</span>
+        <span class="sl-name">${productThumb(p,'sl-thumb')}<b>${esc(p.name)}</b>${p.unit?`<span class="muted">${esc(p.unit)}</span>`:''}${have!==null?`<span class="${have<0?'cell-out':'muted'}">${int(have)} in stock here</span>`:''}</span>
         <span class="num">${priced?bhd(p.price):'<span class="muted">No price</span>'}</span>
         ${priced?`<input id="slq-${esc(p.id)}" class="sl-qty" data-price="${p.price}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" aria-label="Quantity of ${esc(p.name)}">`
           :`<button type="button" class="x" data-go="products" title="Set a price on the Products page">Set price</button>`}
@@ -272,23 +303,83 @@ function viewLocations(){
   </div>`;
 }
 function viewProducts(){
-  const prods=byName(S.products);
+  const prods=byName(S.products),e=S.editProd?P(S.editProd):null;
+  const v=k=>esc(e?(e[k]??''):'');
   return header('Products','Product list')+
   `<div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>Products</h2></div>
-    ${prods.length?`<div class="tbl"><table><thead><tr><th>Product</th><th>SKU</th><th>Line</th><th class="num">Price BHD</th><th class="num">Reorder at</th><th></th></tr></thead><tbody>${prods.map(p=>`<tr><td><b>${esc(p.name)}</b>${p.unit?`<div class="muted" style="font-size:12px">${esc(p.unit)}</div>`:''}${p.barcode?`<div class="muted mono" style="font-size:12px">Barcode: ${esc(p.barcode)}</div>`:''}</td><td class="mono">${esc(p.sku||'—')}</td><td>${esc(p.line)}</td><td class="num">${p.price!==null?bhd(p.price):'<span class="muted">Not set</span>'}</td><td class="num">${int(p.reorderAt??10)}</td><td class="num">${del('products',p.id)}</td></tr>`).join('')}</tbody></table></div>`
+   <section class="panel"><div class="panel-h"><h2>Products</h2><span class="muted" style="font-size:13px">${prods.length} product${prods.length===1?'':'s'}</span></div>
+    ${prods.length?`<div class="prod-grid">${prods.map(p=>`<article class="prod-card${S.editProd===p.id?' editing':''}">
+      <label class="prod-photo" title="${p.imagePath?'Change photo':'Add photo'}">${productThumb(p,'prod-img')}
+        <span class="prod-photo-btn">${p.imagePath?'Change photo':'Add photo'}</span>
+        <input type="file" accept="image/*" data-photo-for="${esc(p.id)}" hidden></label>
+      <div class="prod-body">
+        <b>${esc(p.name)}</b>
+        ${p.unit?`<span class="muted">${esc(p.unit)}</span>`:''}
+        <span class="prod-price">${p.price!==null?bhd(p.price)+' <small>BHD</small>':'<span class="muted">No price</span>'}</span>
+        <span class="muted mono prod-codes">${p.sku?`SKU ${esc(p.sku)}`:''}${p.sku&&p.barcode?' · ':''}${p.barcode?`Barcode ${esc(p.barcode)}`:''}</span>
+        ${p.line?`<span class="pill p-transfer" style="align-self:flex-start">${esc(p.line)}</span>`:''}
+      </div>
+      <div class="prod-actions"><button class="x" data-editprod="${esc(p.id)}">Edit</button>${del('products',p.id)}</div>
+    </article>`).join('')}</div>`
     :emptyBox('No products yet','Add each item you sell, one row per colour or pack size.')}
    </section>
-   <section class="panel"><div class="panel-h"><h2>Add a product</h2></div>
-    <form class="f" id="fProd">
-      <label>Name<input id="pdName" name="name" required placeholder="e.g. Pocket Bidet, black, 4-pack"></label>
-      <div class="row"><label>SKU<input id="pdSku" name="sku" placeholder="Optional"></label>
-      <label>Line<input id="pdLine" name="line" placeholder="Pocket Bidet / Classic Fusion"></label></div>
-      <div class="row"><label>Retail price (BHD)<input id="pdPrice" type="number" name="price" min="0" step="0.001" value="1.99"></label>
-      <label>Reorder at (units)<input id="pdReorder" type="number" name="reorderAt" min="0" step="1" value="10"></label></div>
-      <div class="row"><label>Barcode<input id="pdBarcode" name="barcode" placeholder="Optional barcode"></label>
-      <label>Pack / unit<input id="pdUnit" name="unit" placeholder="e.g. Pouch of 4 caps"></label></div>
-      <button class="btn" type="submit">Add product</button>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>${e?'Edit product':'Add a product'}</h2>${e?'<button class="btn ghost sm" data-canceleditprod>Cancel</button>':''}</div>
+    <form class="f" id="fProd" data-id="${e?esc(e.id):''}">
+      <label>Name<input id="pdName" name="name" required value="${v('name')}" placeholder="e.g. Pocket Bidet Blue"></label>
+      <div class="row"><label>SKU<input id="pdSku" name="sku" value="${v('sku')}" placeholder="Optional"></label>
+      <label>Line<input id="pdLine" name="line" value="${v('line')}" placeholder="Pocket Bidet / Classic Fusion"></label></div>
+      <div class="row"><label>Retail price (BHD)<input id="pdPrice" type="number" name="price" min="0" step="0.001" value="${e?(e.price??''):'1.99'}"></label>
+      <label>Barcode<input id="pdBarcode" name="barcode" value="${v('barcode')}" placeholder="Optional barcode"></label></div>
+      <label>Pack / unit<input id="pdUnit" name="unit" value="${v('unit')}" placeholder="e.g. Pack of 4 caps"></label>
+      <label>Photo<input id="pdPhoto" type="file" name="photo" accept="image/*"></label>
+      <button class="btn" type="submit">${e?'Save changes':'Add product'}</button>
+    </form></section>
+  </div>`;
+}
+
+/* Distributors: partners who buy and resell RINS, tracked from first contact to active */
+function viewDistributors(){
+  if(!S.distReady)return header('Distributors','Distribution partners')+
+    `<div class="banner">The distributors list isn't set up yet. Run <b>supabase/products-distributors.sql</b> in the Supabase SQL Editor, then reload this page.</div>`;
+  const all=[...S.distributors].sort((a,b)=>DIST_STATUSES.indexOf(a.status)-DIST_STATUSES.indexOf(b.status)||a.name.localeCompare(b.name));
+  const list=S.distFilter?all.filter(d=>d.status===S.distFilter):all;
+  const e=S.editDist?S.distributors.find(d=>d.id===S.editDist):null;
+  const v=k=>esc(e?(e[k]??''):'');
+  const count=st=>all.filter(d=>d.status===st).length;
+  return header('Distributors','Distribution partners')+
+  `<div class="grid g-side">
+   <section class="panel"><div class="panel-h"><h2>Partners</h2>
+     <div class="chips"><button class="chip${S.distFilter?'':' on'}" data-distfilter="">All ${all.length}</button>${DIST_STATUSES.map(st=>`<button class="chip${S.distFilter===st?' on':''}" data-distfilter="${st}">${st} ${count(st)}</button>`).join('')}</div></div>
+    ${list.length?`<div class="dist-list">${list.map(d=>`<article class="dist-card${S.editDist===d.id?' editing':''}">
+      <div class="dist-top"><div style="min-width:0"><b>${esc(d.name)}</b><div class="muted" style="font-size:13px">${esc([d.city,d.country].filter(Boolean).join(', ')||'Location not set')}</div></div>
+        <span class="pill st-${esc(d.status.toLowerCase())}">${esc(d.status)}</span></div>
+      <div class="dist-info">
+        ${d.contact?`<span><span class="muted">Contact</span> ${esc(d.contact)}</span>`:''}
+        ${d.phone?`<span><span class="muted">Phone</span> <span class="mono">${esc(d.phone)}</span></span>`:''}
+        ${d.email?`<span><span class="muted">Email</span> ${esc(d.email)}</span>`:''}
+        ${d.terms?`<span><span class="muted">Terms</span> ${esc(d.terms)}</span>`:''}
+        ${d.lastContact?`<span><span class="muted">Last contact</span> ${esc(new Date(d.lastContact+'T00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))}</span>`:''}
+      </div>
+      ${d.nextStep?`<div class="dist-next"><b>Next step</b> ${esc(d.nextStep)}</div>`:''}
+      ${d.notes?`<div class="muted" style="font-size:13px">${esc(d.notes)}</div>`:''}
+      <div class="prod-actions"><button class="x" data-editdist="${esc(d.id)}">Edit</button>${del('distributors',d.id)}</div>
+    </article>`).join('')}</div>`
+    :emptyBox(all.length?'No partners with this status':'No distributors yet',all.length?'Choose another status above.':'Add wholesalers, importers or regional partners you are talking to, and track each one from first contact to active.')}
+   </section>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>${e?'Edit distributor':'Add a distributor'}</h2>${e?'<button class="btn ghost sm" data-canceleditdist>Cancel</button>':''}</div>
+    <form class="f" id="fDist" data-id="${e?esc(e.id):''}">
+      <label>Company name<input id="dsName" name="name" required value="${v('name')}" placeholder="e.g. Gulf Travel Supplies"></label>
+      <div class="row"><label>Country<input id="dsCountry" name="country" value="${v('country')}" placeholder="e.g. Saudi Arabia"></label>
+      <label>City<input id="dsCity" name="city" value="${v('city')}" placeholder="e.g. Dammam"></label></div>
+      <div class="row"><label>Contact person<input id="dsContact" name="contact" value="${v('contact')}"></label>
+      <label>Status<select id="dsStatus" name="status">${DIST_STATUSES.map(st=>`<option ${(e?e.status:'Prospect')===st?'selected':''}>${st}</option>`).join('')}</select></label></div>
+      <div class="row"><label>Phone<input id="dsPhone" name="phone" type="tel" value="${v('phone')}"></label>
+      <label>Email<input id="dsEmail" name="email" type="email" value="${v('email')}"></label></div>
+      <div class="row"><label>Terms<input id="dsTerms" name="terms" value="${v('terms')}" placeholder="e.g. 30% margin, MOQ 500"></label>
+      <label>Last contact<input id="dsLast" name="lastContact" type="date" value="${v('lastContact')}"></label></div>
+      <label>Next step<input id="dsNext" name="nextStep" value="${v('nextStep')}" placeholder="e.g. Send samples and price list"></label>
+      <label>Notes<textarea id="dsNotes" name="notes" rows="3">${v('notes')}</textarea></label>
+      <button class="btn" type="submit">${e?'Save changes':'Add distributor'}</button>
     </form></section>
   </div>`;
 }
@@ -443,27 +534,32 @@ function viewAssistant(){
   </div>`;
 }
 
-const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,documents:viewDocuments,calendar:viewCalendar,analysis:viewAnalysis,links:viewLinks,assistant:viewAssistant};
+const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,distributors:viewDistributors,documents:viewDocuments,calendar:viewCalendar,analysis:viewAnalysis,links:viewLinks,assistant:viewAssistant};
 function render(){
   if($('#app').hidden)return;
   renderNav();
-  const keep={};document.querySelectorAll('main input,main select').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
+  const keep={};document.querySelectorAll('main input,main select,main textarea').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
-  const locFormChanged=S._locFormFor!==S.editLoc;S._locFormFor=S.editLoc;
-  for(const [id,v] of Object.entries(keep)){if(locFormChanged&&/^lc/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
+  const formKey=[S.editLoc,S.editProd,S.editDist].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
+  for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.tab=t;S.armed=null;S.editLoc=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.tab=t;S.armed=null;S.editLoc=null;S.editProd=null;S.editDist=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
-const TABLE_OF={products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
+const TABLE_OF={distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit]');if(!b)return;
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
+  if(b.dataset.editprod!==undefined){S.editProd=b.dataset.editprod;S.armed=null;render();if(innerWidth<980)$('#fProd')?.scrollIntoView({behavior:'smooth'});$('#pdName')?.focus();return}
+  if(b.dataset.canceleditprod!==undefined){S.editProd=null;render();return}
+  if(b.dataset.editdist!==undefined){S.editDist=b.dataset.editdist;S.armed=null;render();if(innerWidth<980)$('#fDist')?.scrollIntoView({behavior:'smooth'});$('#dsName')?.focus();return}
+  if(b.dataset.canceleditdist!==undefined){S.editDist=null;render();return}
+  if(b.dataset.distfilter!==undefined){S.distFilter=b.dataset.distfilter;render();return}
   if(b.dataset.tab)return go(b.dataset.tab);
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.ask){$('#askQ').value=b.dataset.ask;return ask(b.dataset.ask)}
@@ -472,13 +568,19 @@ document.addEventListener('click',async e=>{
     if(b.dataset.del){const key=b.dataset.del;if(S.armed!==key){S.armed=key;render();return}
       S.armed=null;const i=key.indexOf('/'),coll=key.slice(0,i),id=key.slice(i+1);
       if(!TABLE_OF[coll])return;
-      const doc=coll==='documents'?S.documents.find(x=>x.id===id):null;
+      const doc=coll==='documents'?S.documents.find(x=>x.id===id):null,prodPhoto=coll==='products'?P(id)?.imagePath:null;
       await write(sb.from(TABLE_OF[coll]).delete().eq('id',id));
       if(doc)await sb.storage.from('documents').remove([doc.filePath]);
+      if(prodPhoto)await sb.storage.from('documents').remove([prodPhoto]);
       toast('Deleted')}
   }catch(err){S.armed=null;render();toast(err.message,1)}
 });
-document.addEventListener('change',e=>{if(e.target.id==='mvType')syncMoveForm();
+document.addEventListener('change',async e=>{
+  if(e.target.dataset&&e.target.dataset.photoFor&&e.target.files[0]){
+    const id=e.target.dataset.photoFor,file=e.target.files[0];toast('Uploading photo…');
+    try{await uploadProductPhoto(id,file);await loadAll();toast('Photo saved')}catch(err){toast(err.message,1)}
+    return}
+  if(e.target.id==='mvType')syncMoveForm();
   if(e.target.id==='slFrom')render();
   if(e.target.id==='dfProduct'){S.docFilter.product=e.target.value;render()}
   if(e.target.id==='dfType'){S.docFilter.type=e.target.value;render()}});
@@ -519,8 +621,19 @@ document.addEventListener('submit',async e=>{
       await write(sb.from('locations').insert(row));
       toast('Location added');['lcName','lcNote'].forEach(id=>$('#'+id).value='');
     }else if(f.id==='fProd'){
-      await write(sb.from('products').insert({name:d.name.trim(),sku:d.sku||'',line:d.line||'',price:d.price===''?null:Number(d.price),reorder_at:Number(d.reorderAt)||10,unit:d.unit||'',barcode:(d.barcode||'').trim()}));
-      toast('Product added');['pdName','pdSku','pdLine','pdPrice','pdUnit','pdBarcode'].forEach(id=>$('#'+id).value='');
+      const row={name:d.name.trim(),sku:(d.sku||'').trim(),line:(d.line||'').trim(),price:d.price===''?null:Number(d.price),unit:(d.unit||'').trim(),barcode:(d.barcode||'').trim()};
+      const photo=$('#pdPhoto').files[0],id=f.dataset.id;
+      if(id){const {error}=await sb.from('products').update(row).eq('id',id);if(error)throw new Error(friendly(error));
+        if(photo)await uploadProductPhoto(id,photo);S.editProd=null;await loadAll();toast('Product updated');return}
+      const {data,error}=await sb.from('products').insert(row).select('id').single();if(error)throw new Error(friendly(error));
+      if(photo)try{await uploadProductPhoto(data.id,photo)}catch(err){await loadAll();throw new Error('Product added, but '+err.message.charAt(0).toLowerCase()+err.message.slice(1))}
+      await loadAll();toast('Product added');['pdName','pdSku','pdBarcode','pdUnit'].forEach(id=>$('#'+id).value='');$('#pdPhoto').value='';
+    }else if(f.id==='fDist'){
+      const row={name:d.name.trim(),country:(d.country||'').trim(),city:(d.city||'').trim(),contact_name:(d.contact||'').trim(),phone:(d.phone||'').trim(),email:(d.email||'').trim(),status:d.status,terms:(d.terms||'').trim(),last_contact:d.lastContact||null,next_step:(d.nextStep||'').trim(),notes:(d.notes||'').trim()};
+      const id=f.dataset.id;
+      if(id){await write(sb.from('distributors').update(row).eq('id',id));S.editDist=null;render();toast('Distributor updated');return}
+      await write(sb.from('distributors').insert(row));toast('Distributor added');
+      ['dsName','dsCountry','dsCity','dsContact','dsPhone','dsEmail','dsTerms','dsLast','dsNext','dsNotes'].forEach(id=>$('#'+id).value='');$('#dsStatus').value='Prospect';
     }else if(f.id==='fDoc'){
       const file=$('#docFile').files[0];
       if(!file)throw new Error('Choose a file to upload.');

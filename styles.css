@@ -190,3 +190,44 @@ td .x{font-family:var(--f-body)}
 .g-sale{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
 @media (max-width:980px){.g-sale{grid-template-columns:1fr}}
 .sl-name .cell-out{font-size:12px}
+
+/* Product cards and photos */
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.prod-card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.prod-card.editing,.dist-card.editing{border-color:var(--lime);box-shadow:0 0 0 2px var(--lime)}
+.prod-photo{position:relative;display:block;cursor:pointer;aspect-ratio:1/1;max-width:100%;background:var(--bg)}
+.prod-img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;background:repeating-linear-gradient(135deg,var(--bg) 0 10px,var(--panel) 10px 20px);color:var(--muted);border-bottom:1px dashed var(--line)}
+.thumb-ph svg{width:28%;max-width:44px;height:auto;opacity:.55}
+.thumb-ph b{font-family:var(--f-display);font-size:13px;letter-spacing:1px;color:var(--muted)}
+.prod-photo-btn{position:absolute;left:8px;bottom:8px;padding:4px 10px;border-radius:999px;background:var(--navy);color:#fff;font-size:12px;font-weight:600;opacity:.92}
+.prod-photo:hover .prod-photo-btn,.prod-photo:focus-within .prod-photo-btn{background:var(--lime);color:#0A1F00}
+.prod-body{display:flex;flex-direction:column;gap:3px;padding:12px 12px 4px;font-size:13px;flex:1}
+.prod-body b{font-size:15px;overflow-wrap:anywhere}
+.prod-price{font-family:var(--f-display);font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px}
+.prod-price small{font-size:12px;color:var(--muted);font-weight:500}
+.prod-codes{font-size:11px;overflow-wrap:anywhere}
+.prod-actions{display:flex;justify-content:flex-end;gap:4px;padding:4px 8px 8px}
+.x[data-editprod]:hover,.x[data-editdist]:hover{background:var(--line);color:var(--fg)}
+/* thumbnails in the sale form */
+.sl-name{position:relative;padding-left:46px;min-height:36px;justify-content:center}
+.sl-thumb{position:absolute;left:0;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:8px;object-fit:cover;overflow:hidden}
+.sl-thumb.thumb-ph{border:1px dashed var(--line)}
+.sl-thumb.thumb-ph svg{display:none}
+.sl-thumb.thumb-ph b{font-size:11px}
+
+/* Distributors */
+.dist-list{display:flex;flex-direction:column;gap:10px}
+.dist-card{border:1px solid var(--line);border-radius:12px;padding:14px 14px 4px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
+.dist-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.dist-top b{font-size:16px;overflow-wrap:anywhere}
+.dist-info{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px}
+.dist-info span{overflow-wrap:anywhere}
+.dist-next{font-size:13px;padding:8px 10px;border-radius:8px;background:var(--tint)}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.st-prospect{background:var(--line);color:var(--fg)}
+.st-contacted{background:var(--warn-bg);color:var(--warn)}
+.st-negotiating{background:var(--tint);color:var(--lime-ink)}
+.st-active{background:var(--good-bg);color:var(--good)}
+.st-paused{background:var(--bad-bg);color:var(--bad)}
+textarea{resize:vertical}
