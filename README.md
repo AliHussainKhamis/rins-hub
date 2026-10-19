@@ -18,7 +18,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
 | `supabase/products-distributors.sql` | Adds product photos and the distributors table (step 2d) |
-| `supabase/tasks-milestones.sql` | Calendar tasks, Telegram and email reminders, milestone map (step 2f) |
+| `supabase/tasks-milestones.sql` | Calendar tasks, Telegram reminders, milestone map (step 2f) |
 | `supabase/stock-alerts.sql` | Stock levels per branch and phone alerts (step 2e) |
 | `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
@@ -75,16 +75,7 @@ Set how much to keep and when to alert on each branch: Locations > Edit > Stock 
 ### 2f. Calendar tasks, reminders and milestones
 
 1. Run `supabase/tasks-milestones.sql` the same way (after `stock-alerts.sql`). It adds tasks, milestones and a job that sends due reminders every minute.
-2. For email reminders, create a free account at **resend.com** with the email address that should receive reminders, then create an API key (API Keys > Create). Without your own domain, Resend can only send to that same address.
-3. In the SQL Editor, run (with your key):
-   ```sql
-   update public.alert_settings
-   set email_to = 'you@example.com', resend_api_key = 'YOUR_RESEND_KEY'
-   where id = 1;
-   ```
-4. In the hub, open Calendar and click **Send test email**.
-
-Telegram reminders use the bot from step 2e.
+2. Reminders are sent on Telegram, using the bot from step 2e. (Email sending is built into the database but switched off in the hub.)
 
 ### 3. Create your login and close sign-ups
 

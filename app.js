@@ -578,7 +578,7 @@ function computeRemindAt(date,time,rule){
 const taskChip=t=>`<span class="tchip cat-${catKey(t.category)}${t.done?' done':''}" title="${esc(t.title)} · ${esc(IMPORTANCE[t.importance])} · ${esc(t.category)}">${t.importance==='high'?'<i class="imp">!</i>':''}${esc(t.title)}</span>`;
 function taskRow(t,showDate){
   const ms=t.milestoneId?S.milestones.find(m=>m.id===t.milestoneId):null;
-  const remind=t.remindRule!=='none'&&(t.remindTg||t.remindEmail)?`<span class="muted task-rem">Reminder${t.remindedAt?' sent':''}: ${esc(REMIND_RULES[t.remindRule].toLowerCase())}${t.remindTg?' · Telegram':''}${t.remindEmail?' · Email':''}</span>`:'';
+  const remind=t.remindRule!=='none'&&(t.remindTg||t.remindEmail)?`<span class="muted task-rem">Reminder${t.remindedAt?' sent':''}: ${esc(REMIND_RULES[t.remindRule].toLowerCase())}${t.remindTg?' · Telegram':''}</span>`:'';
   return `<div class="task cat-${catKey(t.category)}${t.done?' done':''}">
     <input type="checkbox" class="t-done" data-taskdone="${esc(t.id)}" ${t.done?'checked':''} aria-label="Mark ${esc(t.title)} done">
     <div class="task-main"><b>${esc(t.title)}</b>
@@ -632,7 +632,7 @@ function viewMonth(tabs){
       <label>Notes<input id="tkNotes" name="notes" value="${fv('notes')}" placeholder="Details, contact, address"></label>
       <fieldset class="levels"><legend>Reminder</legend>
        <select id="tkRule" name="rule" aria-label="When to remind">${Object.entries(REMIND_RULES).map(([k,v])=>`<option value="${k}" ${(e?e.remindRule:'none')===k?'selected':''}>${v}</option>`).join('')}</select>
-       <div class="chips" style="margin-top:8px"><label class="check" style="margin:0"><input type="checkbox" id="tkTg" name="tg" ${!e||e.remindTg?'checked':''}> Telegram</label><label class="check" style="margin:0"><input type="checkbox" id="tkEm" name="em" ${e&&e.remindEmail?'checked':''}> Email${S.emailStatus&&S.emailStatus.to?` <span class="muted">(${esc(S.emailStatus.to)})</span>`:''}</label></div>
+       <p class="muted" style="font-size:12px;margin:6px 0 0">Sent to you on Telegram.</p>
       </fieldset>
       <button class="btn" type="submit">${e?'Save changes':'Add task'}</button>
      </form>
@@ -647,10 +647,8 @@ function viewMonth(tabs){
 function viewReminderSettings(){
   const st=S.alertStatus,es=S.emailStatus;
   const tg=st&&st.enabled&&st.configured?'<span class="pill p-ok">On</span>':'<span class="pill p-low">Off</span>';
-  const em=es&&es.configured?`<span class="pill p-ok">On</span> <span class="muted" style="font-size:13px">${esc(es.to)}</span>`:'<span class="pill p-low">Off</span> <span class="muted" style="font-size:13px">finish the email setup in the guide</span>';
   return `<section class="panel" style="margin-top:16px"><div class="panel-h"><h2>Reminders</h2></div>
-   <div class="rem-grid"><div><b>Telegram</b> ${tg}<div style="margin-top:8px"><button class="btn ghost sm" data-testwa>Send test message</button></div></div>
-   <div><b>Email</b> ${em}<div style="margin-top:8px"><button class="btn ghost sm" data-testemail>Send test email</button></div></div></div>
+   <div><b>Telegram</b> ${tg}<div style="margin-top:8px"><button class="btn ghost sm" data-testwa>Send test message</button></div></div>
    <p class="muted" style="font-size:13px;margin:12px 0 0">Reminders are checked every minute and sent once. Changing a task's date, time or reminder sets it to send again.</p></section>`;
 }
 function viewMilestones(tabs){
@@ -857,7 +855,7 @@ document.addEventListener('submit',async e=>{
     }else if(f.id==='fTask'){
       const rule=d.rule||'none',remindAt=computeRemindAt(d.date,d.time,rule);
       const row={title:d.title.trim(),due_date:d.date,due_time:d.time||null,category:d.category,importance:d.importance,notes:(d.notes||'').trim(),milestone_id:d.milestone||null,
-        remind_rule:rule,remind_at:remindAt,remind_telegram:rule!=='none'&&!!d.tg,remind_email:rule!=='none'&&!!d.em};
+        remind_rule:rule,remind_at:remindAt,remind_telegram:rule!=='none',remind_email:false};
       const id=f.dataset.id;
       if(id){await write(sb.from('tasks').update(row).eq('id',id));S.editTask=null;render();toast('Task updated');return}
       await write(sb.from('tasks').insert(row));
