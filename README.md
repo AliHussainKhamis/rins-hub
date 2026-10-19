@@ -18,6 +18,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
 | `supabase/products-distributors.sql` | Adds product photos and the distributors table (step 2d) |
+| `supabase/stock-alerts.sql` | Stock levels per branch and WhatsApp alerts (step 2e) |
 | `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
 
@@ -50,6 +51,21 @@ Run `supabase/locations.sql` the same way. It adds the retailer, format (Superma
 ### 2d. Set up product photos and distributors
 
 Run `supabase/products-distributors.sql` the same way. It adds the photo field on products and the distributors table. Product photos are stored in the same private storage folder as documents, so run `documents.sql` first.
+
+### 2e. Stock levels and WhatsApp alerts
+
+1. Run `supabase/stock-alerts.sql` the same way. It adds stock levels per branch and the alert checks.
+2. Get a free WhatsApp key from CallMeBot: from the phone that should receive alerts, save CallMeBot's WhatsApp number (shown on callmebot.com) as a contact and send it `I allow callmebot to send me messages`. It replies with your API key.
+3. In the SQL Editor, run (with your own number in international format and the key):
+   ```sql
+   update public.alert_settings
+   set whatsapp_phone = '+973XXXXXXXX', callmebot_apikey = 'YOUR_KEY', enabled = true
+   where id = 1;
+   ```
+   Never put the number or key in this repository: it is public.
+4. In the hub, open Inventory and click **Send test message**.
+
+Set how much to keep and when to alert on each branch: Locations > Edit > Stock to keep here.
 
 ### 3. Create your login and close sign-ups
 

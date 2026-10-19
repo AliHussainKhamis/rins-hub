@@ -231,3 +231,21 @@ td .x{font-family:var(--f-body)}
 .st-active{background:var(--good-bg);color:var(--good)}
 .st-paused{background:var(--bad-bg);color:var(--bad)}
 textarea{resize:vertical}
+
+/* Stock levels per branch */
+fieldset.levels{border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px;margin:0;min-width:0}
+fieldset.levels legend{font-size:13px;font-weight:600;color:var(--fg);padding:0 6px}
+.lv-head,.lv-row{display:grid;grid-template-columns:minmax(0,1fr) 72px 72px;gap:8px;align-items:center}
+.lv-head{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:2px 0 6px}
+.lv-row{padding:4px 0}
+.lv-row input{text-align:right;padding:7px 8px}
+.lv-name{position:relative;padding-left:46px;min-height:36px;display:flex;align-items:center;font-size:13px;min-width:0}
+.lv-name b{overflow-wrap:anywhere}
+label.check{flex-direction:row;align-items:center;gap:8px;margin-top:10px;color:var(--fg)}
+label.check input{width:auto}
+h3.sub{font-family:var(--f-display);font-size:14px;font-weight:600;margin:18px 0 8px}
+.alert-log{font-size:13px;flex-wrap:wrap}
+td.num .btn{font-family:var(--f-body)}
+.stock-matrix th.num{white-space:normal;min-width:80px;vertical-align:bottom}
+.stock-matrix tfoot td{border-top:2px solid var(--line);border-bottom:0}
+.stock-matrix tbody tr:hover td{background:var(--bg)}
