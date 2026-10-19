@@ -1,4 +1,4 @@
--- RINS Hub: stock levels per branch and WhatsApp alerts
+-- RINS Hub: stock levels per branch and phone alerts (Telegram or WhatsApp)
 -- Run once in Supabase: SQL Editor > New query > paste everything > Run.
 -- Safe to run again.
 --
@@ -9,8 +9,10 @@
 -- Because this runs inside the database, alerts work no matter who records
 -- the sale, including retailer staff in future.
 --
--- Your phone number and WhatsApp key are NOT in this file (the code is public).
--- You set them separately with the short "alert_settings" update in the setup guide.
+-- Your bot token, chat ID, phone number and keys are NOT in this file (the code
+-- is public). You set them separately with the short "alert_settings" update in
+-- the setup guide. Alerts go to Telegram (provider 'telegram') or to WhatsApp via
+-- CallMeBot (provider 'callmebot').
 
 create extension if not exists pg_net;
 
@@ -39,6 +41,11 @@ create table if not exists public.alert_settings (
 );
 alter table public.alert_settings enable row level security;
 insert into public.alert_settings (id) values (1) on conflict do nothing;
+alter table public.alert_settings add column if not exists provider           text not null default 'telegram';
+alter table public.alert_settings add column if not exists telegram_bot_token text not null default '';
+alter table public.alert_settings add column if not exists telegram_chat_id   text not null default '';
+alter table public.alert_settings drop constraint if exists alert_settings_provider_check;
+alter table public.alert_settings add constraint alert_settings_provider_check check (provider in ('telegram','callmebot'));
 
 -- 3. Alert history (shown in the hub) and per-branch alert state (internal)
 create table if not exists public.stock_alerts (
@@ -80,24 +87,34 @@ as $$
   where product_id = p_product and (from_loc = p_location or to_loc = p_location);
 $$;
 
--- 5. Send one WhatsApp message through CallMeBot (to the number in alert_settings)
-create or replace function public.send_whatsapp(p_message text)
+-- 5. Send one alert to your phone, through Telegram or WhatsApp (CallMeBot)
+drop function if exists public.send_whatsapp(text);
+create or replace function public.send_alert(p_message text)
 returns text language plpgsql security definer
 set search_path = public
 as $$
 declare s public.alert_settings;
 begin
   select * into s from public.alert_settings where id = 1;
-  if s is null or not s.enabled or s.whatsapp_phone = '' or s.callmebot_apikey = '' then
-    return 'not_configured';
+  if s is null or not s.enabled then return 'not_configured'; end if;
+  if s.provider = 'telegram' then
+    if s.telegram_bot_token = '' or s.telegram_chat_id = '' then return 'not_configured'; end if;
+    perform net.http_post(
+      url     := 'https://api.telegram.org/bot' || s.telegram_bot_token || '/sendMessage',
+      body    := jsonb_build_object('chat_id', s.telegram_chat_id, 'text', p_message),
+      headers := '{"Content-Type": "application/json"}'::jsonb
+    );
+    return 'sent';
+  else
+    if s.whatsapp_phone = '' or s.callmebot_apikey = '' then return 'not_configured'; end if;
+    perform net.http_get(
+      url    := 'https://api.callmebot.com/whatsapp.php',
+      params := jsonb_build_object('phone', s.whatsapp_phone, 'text', p_message, 'apikey', s.callmebot_apikey)
+    );
+    return 'sent';
   end if;
-  perform net.http_get(
-    url    := 'https://api.callmebot.com/whatsapp.php',
-    params := jsonb_build_object('phone', s.whatsapp_phone, 'text', p_message, 'apikey', s.callmebot_apikey)
-  );
-  return 'sent';
 end $$;
-revoke all on function public.send_whatsapp(text) from public, anon, authenticated;
+revoke all on function public.send_alert(text) from public, anon, authenticated;
 
 -- 6. Check one product at one branch and alert if it has just dropped to the alert level.
 --    p_notify = false only records the state (used when levels are set, so setting
@@ -139,7 +156,7 @@ begin
         || q || ' left (alert at ' || lvl.alert_qty || ').'
         || case when lvl.keep_qty > q then chr(10) || 'Send ' || (lvl.keep_qty - q) || ' to refill to ' || lvl.keep_qty || '.' else '' end;
     insert into public.stock_alerts (location_id, product_id, qty, alert_qty, keep_qty, message, status)
-    values (p_location, p_product, q, lvl.alert_qty, lvl.keep_qty, msg, public.send_whatsapp(msg));
+    values (p_location, p_product, q, lvl.alert_qty, lvl.keep_qty, msg, public.send_alert(msg));
     insert into public.stock_alert_state (location_id, product_id, is_low, updated_at)
     values (p_location, p_product, true, now())
     on conflict (location_id, product_id) do update set is_low = true, updated_at = now();
@@ -206,8 +223,11 @@ begin
   select * into s from public.alert_settings where id = 1;
   return jsonb_build_object(
     'enabled', coalesce(s.enabled, false),
-    'configured', coalesce(s.whatsapp_phone <> '' and s.callmebot_apikey <> '', false),
-    'phone_end', right(coalesce(s.whatsapp_phone, ''), 4));
+    'provider', coalesce(s.provider, 'telegram'),
+    'configured', case when s.provider = 'callmebot'
+                       then coalesce(s.whatsapp_phone <> '' and s.callmebot_apikey <> '', false)
+                       else coalesce(s.telegram_bot_token <> '' and s.telegram_chat_id <> '', false) end,
+    'phone_end', case when s.provider = 'callmebot' then right(coalesce(s.whatsapp_phone, ''), 4) else '' end);
 end $$;
 
 create or replace function public.send_test_whatsapp()
@@ -216,7 +236,7 @@ set search_path = public
 as $$
 begin
   if not public.is_hub_user() then raise exception 'Not allowed'; end if;
-  return public.send_whatsapp('RINS Hub test message: WhatsApp stock alerts are working.');
+  return public.send_alert('RINS Hub test message: stock alerts are working.');
 end $$;
 
 drop function if exists public.check_all_stock_alerts();

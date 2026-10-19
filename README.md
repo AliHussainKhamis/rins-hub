@@ -18,7 +18,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `supabase/schema.sql` | Creates the database, the access rules and your starting data (step 2) |
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
 | `supabase/products-distributors.sql` | Adds product photos and the distributors table (step 2d) |
-| `supabase/stock-alerts.sql` | Stock levels per branch and WhatsApp alerts (step 2e) |
+| `supabase/stock-alerts.sql` | Stock levels per branch and phone alerts (step 2e) |
 | `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
 
@@ -52,18 +52,22 @@ Run `supabase/locations.sql` the same way. It adds the retailer, format (Superma
 
 Run `supabase/products-distributors.sql` the same way. It adds the photo field on products and the distributors table. Product photos are stored in the same private storage folder as documents, so run `documents.sql` first.
 
-### 2e. Stock levels and WhatsApp alerts
+### 2e. Stock levels and phone alerts
 
 1. Run `supabase/stock-alerts.sql` the same way. It adds stock levels per branch and the alert checks.
-2. Get a free WhatsApp key from CallMeBot: from the phone that should receive alerts, save CallMeBot's WhatsApp number (shown on callmebot.com) as a contact and send it `I allow callmebot to send me messages`. It replies with your API key.
-3. In the SQL Editor, run (with your own number in international format and the key):
+2. Create your Telegram bot: in Telegram, message **@BotFather**, send `/newbot`, choose a name and a username ending in `bot`. Copy the token it gives you.
+3. Open your new bot and press **Start** (a bot can only message people who started it).
+4. Get your chat ID: message **@userinfobot** in Telegram; it replies with your **Id** number.
+5. In the SQL Editor, run (with your own token and ID):
    ```sql
    update public.alert_settings
-   set whatsapp_phone = '+973XXXXXXXX', callmebot_apikey = 'YOUR_KEY', enabled = true
+   set provider = 'telegram', telegram_bot_token = 'YOUR_TOKEN', telegram_chat_id = 'YOUR_ID', enabled = true
    where id = 1;
    ```
-   Never put the number or key in this repository: it is public.
-4. In the hub, open Inventory and click **Send test message**.
+   Never put the token in this repository: it is public.
+6. In the hub, open Inventory and click **Send test message**.
+
+To use WhatsApp through CallMeBot instead (when it accepts new users), set `provider = 'callmebot'` with `whatsapp_phone` and `callmebot_apikey`.
 
 Set how much to keep and when to alert on each branch: Locations > Edit > Stock to keep here.
 

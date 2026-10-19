@@ -217,7 +217,8 @@ function viewRefillAndAlerts(){
   if(!S.levelsReady)return `<div class="banner" style="margin-top:16px">Stock levels and WhatsApp alerts aren't set up yet. Run <b>supabase/stock-alerts.sql</b> in the Supabase SQL Editor, then reload.</div>`;
   const list=refillList(),st=S.alertStatus;
   const pillTxt={out:'Empty',low:'Alert',under:'Below target'};
-  const wa=!st?'<span class="pill p-out">Unknown</span>':st.enabled&&st.configured?`<span class="pill p-ok">On</span> <span class="muted" style="font-size:13px">to number ending ${esc(st.phone_end)}</span>`:'<span class="pill p-low">Off</span> <span class="muted" style="font-size:13px">finish the WhatsApp setup in the guide</span>';
+  const via=st&&st.provider==='callmebot'?`WhatsApp, number ending ${esc(st.phone_end)}`:'Telegram';
+  const wa=!st?'<span class="pill p-out">Unknown</span>':st.enabled&&st.configured?`<span class="pill p-ok">On</span> <span class="muted" style="font-size:13px">via ${via}</span>`:'<span class="pill p-low">Off</span> <span class="muted" style="font-size:13px">finish the alert setup in the guide</span>';
   return `<div class="grid g-side" style="margin-top:16px">
    <section class="panel"><div class="panel-h"><h2>Refill list</h2><span class="muted" style="font-size:13px">${list.length?`${list.length} to refill`:'Branches compared with their stock levels'}</span></div>
     ${list.length?`<div class="tbl"><table><thead><tr><th>Branch</th><th>Product</th><th class="num">Have</th><th class="num">Keep</th><th class="num">Send</th><th></th></tr></thead><tbody>${list.map(r=>`<tr>
@@ -226,11 +227,11 @@ function viewRefillAndAlerts(){
       <td class="num">${r.send?`<button class="btn ghost sm" data-refill="${esc(r.l.id)}|${esc(r.p.id)}|${r.send}">Record delivery</button>`:''}</td></tr>`).join('')}</tbody></table></div>`
     :emptyBox(S.levels.length?'Every branch is stocked':'No stock levels set yet',S.levels.length?'Nothing needs refilling right now.':'Open a branch on the Locations page, click Edit, and set how much to keep and when to alert.')}
    </section>
-   <section class="panel" style="align-self:start"><div class="panel-h"><h2>WhatsApp alerts</h2><div>${wa}</div></div>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>Phone alerts</h2><div>${wa}</div></div>
     <p class="muted" style="font-size:13px;margin:0 0 12px">One message when a product drops to a branch's alert level. It won't repeat until the branch is refilled.</p>
     <button class="btn ghost sm" data-testwa>Send test message</button>
     <h3 class="sub">Recent alerts</h3>
-    ${S.alertLog.length?`<div class="alerts">${S.alertLog.map(a=>`<div class="alert alert-log"><span><b>${esc(L(a.location_id)?.name||'Branch')}</b> · ${esc(P(a.product_id)?.name||'Product')} · ${int(a.qty)} left${a.status!=='sent'?' <span class="muted">(not sent: WhatsApp off)</span>':''}</span><span class="muted">${esc(new Date(a.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))}</span></div>`).join('')}</div>`
+    ${S.alertLog.length?`<div class="alerts">${S.alertLog.map(a=>`<div class="alert alert-log"><span><b>${esc(L(a.location_id)?.name||'Branch')}</b> · ${esc(P(a.product_id)?.name||'Product')} · ${int(a.qty)} left${a.status!=='sent'?' <span class="muted">(not sent: alerts off)</span>':''}</span><span class="muted">${esc(new Date(a.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))}</span></div>`).join('')}</div>`
     :'<div class="muted" style="font-size:13px">No alerts yet.</div>'}
    </section>
   </div>`;
@@ -334,7 +335,7 @@ function levelsEditor(e){
     ${prods.map(p=>{const lv=e?LV(e.id,p.id):null;return `<div class="lv-row"><span class="lv-name">${productThumb(p,'sl-thumb')}<b>${esc(p.name)}</b></span>
       <input id="lck-${esc(p.id)}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${lv&&lv.keep?lv.keep:''}" aria-label="Keep of ${esc(p.name)}">
       <input id="lca-${esc(p.id)}" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${lv&&lv.alert?lv.alert:''}" aria-label="Alert level of ${esc(p.name)}"></div>`}).join('')}
-    <p class="muted" style="font-size:12px;margin:6px 0 0">Keep: the stock you aim to have on the shelf. Alert at: send a WhatsApp alert when stock drops to this number. Leave both empty for products you don't place here.</p>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">Keep: the stock you aim to have on the shelf. Alert at: send a phone alert when stock drops to this number. Leave both empty for products you don't place here.</p>
     ${same.length?`<label class="check"><input type="checkbox" id="lcApply" name="applySame"> Also apply these levels to the other ${same.length} ${esc(e.chain)} ${esc(e.format||'')} branch${same.length===1?'':'es'}</label>`:''}
   </fieldset>`;
 }
@@ -643,7 +644,7 @@ document.addEventListener('click',async e=>{
     toast(wh?'Delivery filled in. Check the details and save.':'Delivery filled in. Choose where the stock comes from, then save.');return}
   if(b.dataset.testwa!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_whatsapp');b.disabled=false;
     if(error)return toast('Could not send: '+error.message,1);
-    return toast(data==='sent'?'Test message sent. It should arrive on WhatsApp within a minute.':'WhatsApp is not set up yet. Finish the setup steps first.',data!=='sent')}
+    return toast(data==='sent'?'Test message sent. It should arrive within a minute.':'Alerts are not set up yet. Finish the setup steps first.',data!=='sent')}
   if(b.dataset.tab)return go(b.dataset.tab);
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.ask){$('#askQ').value=b.dataset.ask;return ask(b.dataset.ask)}
