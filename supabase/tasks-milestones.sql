@@ -156,3 +156,6 @@ select v.title, v.category, 'Planned', v.description from (values
   ('Next product launch',            'Production', '')
 ) as v(title, category, description)
 where not exists (select 1 from public.milestones m where lower(m.title) = lower(v.title));
+
+-- 8. Milestone start date (the due date is target_date)
+alter table public.milestones add column if not exists start_date date;

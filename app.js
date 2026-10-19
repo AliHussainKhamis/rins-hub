@@ -56,7 +56,7 @@ const FROM_DB={
   distributors:r=>({id:r.id,name:r.name,country:r.country||'',city:r.city||'',contact:r.contact_name||'',phone:r.phone||'',email:r.email||'',status:r.status||'Prospect',terms:r.terms||'',lastContact:r.last_contact||'',nextStep:r.next_step||'',notes:r.notes||'',createdAt:Date.parse(r.created_at)||0}),
   stock_levels:r=>({locationId:r.location_id,productId:r.product_id,keep:Number(r.keep_qty)||0,alert:Number(r.alert_qty)||0}),
   tasks:r=>({id:r.id,title:r.title,date:r.due_date,time:r.due_time?r.due_time.slice(0,5):'',category:r.category||'Other',importance:r.importance||'medium',notes:r.notes||'',done:!!r.done,milestoneId:r.milestone_id||'',remindRule:r.remind_rule||'none',remindAt:r.remind_at,remindTg:!!r.remind_telegram,remindEmail:!!r.remind_email,remindedAt:r.reminded_at,createdAt:Date.parse(r.created_at)||0}),
-  milestones:r=>({id:r.id,title:r.title,date:r.target_date||'',category:r.category||'Operations',status:r.status||'Planned',description:r.description||'',createdAt:Date.parse(r.created_at)||0}),
+  milestones:r=>({id:r.id,title:r.title,date:r.target_date||'',start:r.start_date||'',category:r.category||'Operations',status:r.status||'Planned',description:r.description||'',createdAt:Date.parse(r.created_at)||0}),
   links:r=>({id:r.id,title:r.title,url:r.url,category:r.category||'Other',pinned:!!r.pinned,createdAt:Date.parse(r.created_at)||0})
 };
 async function fetchAll(table){
@@ -651,48 +651,81 @@ function viewReminderSettings(){
    <div><b>Telegram</b> ${tg}<div style="margin-top:8px"><button class="btn ghost sm" data-testwa>Send test message</button></div></div>
    <p class="muted" style="font-size:13px;margin:12px 0 0">Reminders are checked every minute and sent once. Changing a task's date, time or reminder sets it to send again.</p></section>`;
 }
-function viewMilestones(tabs){
-  const ms=[...S.milestones],e=S.editMs?ms.find(m=>m.id===S.editMs):null,fv=k=>esc(e?(e[k]??''):'');
-  const q=d=>{const dt=new Date(d+'T00:00');return `${dt.getFullYear()}-Q${Math.floor(dt.getMonth()/3)+1}`};
-  const qLabel=k=>{const [y,qq]=k.split('-Q');return `Q${qq} ${y}`};
-  const now=new Date(),curQ=`${now.getFullYear()}-Q${Math.floor(now.getMonth()/3)+1}`;
-  const groups={};for(const m of ms.filter(m=>m.date))(groups[q(m.date)]??=[]).push(m);
-  const keys=Object.keys(groups);if(!keys.includes(curQ))keys.push(curQ);keys.sort();
-  const undated=ms.filter(m=>!m.date);
-  const done=ms.filter(m=>m.status==='Done').length,pct=ms.length?Math.round(done/ms.length*100):0;
-  const tasksOf=m=>S.tasks.filter(t=>t.milestoneId===m.id);
-  const card=m=>{const ts=tasksOf(m),td=ts.filter(t=>t.done).length;
-    return `<button class="ms-card cat-${catKey(m.category)}${S.editMs===m.id?' editing':''}" data-editms="${esc(m.id)}">
+/* Milestone map: vertical timeline (year > quarter > milestones), editable in place */
+const QMONTHS=['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'];
+const qOf=iso=>{const d=new Date(iso+'T00:00');return d.getFullYear()*4+Math.floor(d.getMonth()/3)};
+const qYear=k=>Math.floor(k/4),qNum=k=>k%4;
+const fmtDate=iso=>new Date(iso+'T00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+function shiftQuarters(iso,n){if(!iso)return '';const d=new Date(iso+'T00:00'),day=d.getDate(),m=d.getMonth()+3*n,y=d.getFullYear()+Math.floor(m/12),mm=((m%12)+12)%12;
+  return isoDate(new Date(y,mm,Math.min(day,new Date(y,mm+1,0).getDate())))}
+const quarterStart=k=>isoDate(new Date(qYear(k),qNum(k)*3,15));
+function msCard(m){
+  const ts=S.tasks.filter(t=>t.milestoneId===m.id),td=ts.filter(t=>t.done).length;
+  return `<article class="tl-card cat-${catKey(m.category)}${m.status==='Done'?' is-done':''}${S.editMs===m.id?' editing':''}${S.flashMs===m.id?' flash':''}" draggable="true" data-msdrag="${esc(m.id)}" id="ms-${esc(m.id)}">
+    <button class="tl-open" data-editms="${esc(m.id)}" aria-label="Edit ${esc(m.title)}">
       <span class="ms-top"><span class="catdot"></span><span class="muted" style="font-size:12px">${esc(m.category)}</span><span class="pill ms-${m.status.toLowerCase().replace(/\s/g,'')}">${esc(m.status)}</span></span>
       <b>${esc(m.title)}</b>
-      <span class="muted mono" style="font-size:12px">${m.date?esc(new Date(m.date+'T00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})):'Date to set'}</span>
+      ${m.description?`<span class="muted tl-desc">${esc(m.description)}</span>`:''}
       ${ts.length?`<span class="ms-prog"><span class="bar"><i style="width:${Math.round(td/ts.length*100)}%"></i></span><span class="muted" style="font-size:12px">${td}/${ts.length} tasks</span></span>`:''}
-      ${m.description?`<span class="muted" style="font-size:12px">${esc(m.description)}</span>`:''}</button>`};
+    </button>
+    <div class="tl-dates">
+      <label>Start<input type="date" data-msfield="start_date" data-msid="${esc(m.id)}" value="${esc(m.start)}"></label>
+      <label>Due<input type="date" data-msfield="target_date" data-msid="${esc(m.id)}" value="${esc(m.date)}"></label>
+    </div>
+  </article>`;
+}
+function viewMilestones(tabs){
+  const ms=[...S.milestones],e=S.editMs?ms.find(m=>m.id===S.editMs):null,fv=k=>esc(e?(e[k]??''):'');
+  const nowK=qOf(today()),dated=ms.filter(m=>m.date),undated=ms.filter(m=>!m.date);
+  const keys=dated.map(m=>qOf(m.date));
+  const lo=Math.min(nowK,...keys),hi=Math.max(nowK+3,...keys);
+  const byQ={};for(const m of dated)(byQ[qOf(m.date)]??=[]).push(m);
+  const done=ms.filter(m=>m.status==='Done').length,pct=ms.length?Math.round(done/ms.length*100):0;
+  let rows='',side=0;
+  for(let k=lo;k<=hi;k++){
+    if(k===lo||qNum(k)===0)rows+=`<div class="tl-year"><span>${qYear(k)}</span></div>`;
+    const list=(byQ[k]||[]).sort((a,b)=>a.date.localeCompare(b.date));
+    const sd=list.length?(side++%2?'left':'right'):'right';
+    rows+=`<div class="tl-period ${sd}${k===nowK?' now':''}${k<nowK?' past':''}${list.length?'':' is-empty'}" data-msdrop="${k}">
+      <div class="tl-node"><b>Q${qNum(k)+1}</b><small>${QMONTHS[qNum(k)]}</small>${k===nowK?'<span class="tl-now">Now</span>':''}</div>
+      <div class="tl-branch">${list.map(msCard).join('')}<button class="tl-add" data-msadd="${k}">+ Add to Q${qNum(k)+1} ${qYear(k)}</button></div>
+    </div>`;
+  }
   return header('Calendar','Milestone map',tabs)+
   `<div class="kpis ms-kpis">
     <div class="kpi hero"><div class="l">Roadmap progress</div><div class="v">${pct}<small>%</small></div><div class="s">${done} of ${ms.length} milestones done</div></div>
     ${['In progress','At risk','Planned'].map(st=>`<div class="kpi"><div class="l">${st}</div><div class="v">${ms.filter(m=>m.status===st).length}</div><div class="s">milestone${ms.filter(m=>m.status===st).length===1?'':'s'}</div></div>`).join('')}
   </div>
   <div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>Roadmap</h2><span class="muted" style="font-size:13px">Click a milestone to edit it</span></div>
-    <div class="roadmap-scroll"><div class="roadmap-cols">
-     ${keys.map(k=>`<div class="rm-col${k===curQ?' now':''}"><div class="rm-head">${qLabel(k)}${k===curQ?' <span class="pill p-in">Now</span>':''}</div>${(groups[k]||[]).sort((a,b)=>a.date.localeCompare(b.date)).map(card).join('')||'<span class="muted" style="font-size:12px">No milestones</span>'}</div>`).join('')}
-     ${undated.length?`<div class="rm-col undated"><div class="rm-head">Date to set</div>${undated.map(card).join('')}</div>`:''}
-    </div></div>
+   <section class="panel tl-panel"><div class="panel-h"><h2>Roadmap timeline</h2><span class="muted" style="font-size:13px">Change a date or drag a card to move it</span></div>
+    <div class="tl">${rows}
+     <div class="tl-period right undated" data-msdrop="none">
+      <div class="tl-node"><b>?</b><small>No date</small></div>
+      <div class="tl-branch">${undated.map(msCard).join('')}${undated.length?'':'<span class="muted" style="font-size:13px">Every milestone has a date.</span>'}<button class="tl-add" data-msadd="none">+ Add without a date</button></div>
+     </div>
+    </div>
    </section>
-   <section class="panel" style="align-self:start"><div class="panel-h"><h2>${e?'Edit milestone':'Add a milestone'}</h2>${e?'<button class="btn ghost sm" data-canceleditms>Cancel</button>':''}</div>
+   <section class="panel" style="align-self:start" id="msFormPanel"><div class="panel-h"><h2>${e?'Edit milestone':'Add a milestone'}</h2>${e?'<button class="btn ghost sm" data-canceleditms>Cancel</button>':''}</div>
     <form class="f" id="fMs" data-id="${e?esc(e.id):''}">
      <label>Milestone<input id="msTitle" name="title" required value="${fv('title')}" placeholder="e.g. Alosra listing live"></label>
-     <div class="row"><label>Target date<input id="msDate" type="date" name="date" value="${fv('date')}"></label>
-     <label>Status<select id="msStatus" name="status">${MS_STATUSES.map(st=>`<option ${(e?e.status:'Planned')===st?'selected':''}>${st}</option>`).join('')}</select></label></div>
-     <label>Type of work<select id="msCat" name="category">${TASK_CATS.map(k=>`<option ${(e?e.category:'Operations')===k?'selected':''}>${esc(k)}</option>`).join('')}</select></label>
+     <div class="row"><label>Start date<input id="msStart" type="date" name="start" value="${fv('start')}"></label>
+     <label>Due date<input id="msDate" type="date" name="date" value="${e?fv('date'):esc(S.msPrefillDate||'')}"></label></div>
+     <div class="row"><label>Status<select id="msStatus" name="status">${MS_STATUSES.map(st=>`<option ${(e?e.status:'Planned')===st?'selected':''}>${st}</option>`).join('')}</select></label>
+     <label>Type of work<select id="msCat" name="category">${TASK_CATS.map(k=>`<option ${(e?e.category:'Operations')===k?'selected':''}>${esc(k)}</option>`).join('')}</select></label></div>
      <label>Description<textarea id="msDesc" name="description" rows="3">${fv('description')}</textarea></label>
      <button class="btn" type="submit">${e?'Save changes':'Add milestone'}</button>
      ${e?`<div style="display:flex;justify-content:flex-end">${del('milestones',e.id)}</div>`:''}
     </form>
-    ${e&&tasksOf(e).length?`<h3 class="sub">Tasks for this milestone</h3><div class="task-list">${tasksOf(e).sort((a,b)=>a.date.localeCompare(b.date)).map(t=>taskRow(t,true)).join('')}</div>`:''}
+    ${e&&S.tasks.some(t=>t.milestoneId===e.id)?`<h3 class="sub">Tasks for this milestone</h3><div class="task-list">${S.tasks.filter(t=>t.milestoneId===e.id).sort((a,b)=>a.date.localeCompare(b.date)).map(t=>taskRow(t,true)).join('')}</div>`:''}
+    <div class="legend" style="margin-top:16px">${TASK_CATS.map(k=>`<span class="cat-${catKey(k)}"><span class="catdot"></span>${esc(k)}</span>`).join('')}</div>
    </section>
   </div>`;
+}
+async function moveMilestone(id,patch,msg){
+  try{await write(sb.from('milestones').update(patch).eq('id',id));S.flashMs=id;render();
+    const el=document.getElementById('ms-'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>{S.flashMs=null;document.getElementById('ms-'+id)?.classList.remove('flash')},1600);toast(msg)}
+  catch(err){toast(err.message,1);render()}
 }
 
 function viewAnalysis(){
@@ -740,7 +773,7 @@ function render(){
   renderNav();
   const keep={};document.querySelectorAll('main input,main select,main textarea').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
-  const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
+  const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab,S.msPrefillDate].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
   for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds|tk|ms)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
@@ -751,7 +784,7 @@ function go(t){S.tab=t;S.armed=null;S.editLoc=null;S.editProd=null;S.editDist=nu
 const TABLE_OF={tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms]');if(!b)return;
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
@@ -771,6 +804,8 @@ document.addEventListener('click',async e=>{
   if(b.dataset.canceledittask!==undefined){S.editTask=null;render();return}
   if(b.dataset.editms){S.editMs=b.dataset.editms;S.armed=null;render();if(innerWidth<980)$('#fMs')?.scrollIntoView({behavior:'smooth'});return}
   if(b.dataset.canceleditms!==undefined){S.editMs=null;render();return}
+  if(b.dataset.msadd!==undefined){S.editMs=null;S.msPrefillDate=b.dataset.msadd==='none'?'':quarterStart(Number(b.dataset.msadd));render();
+    const dt=$('#msDate');if(dt)dt.value=S.msPrefillDate;$('#msFormPanel')?.scrollIntoView({behavior:'smooth',block:'start'});$('#msTitle')?.focus();return}
   if(b.dataset.testemail!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_email');b.disabled=false;
     if(error)return toast('Could not send: '+error.message,1);
     return toast(data==='sent'?'Test email sent to '+(S.emailStatus?.to||'your inbox')+'. Check spam if it is not there in a minute.':'Email is not set up yet. Finish the setup steps first.',data!=='sent')}
@@ -793,6 +828,10 @@ document.addEventListener('click',async e=>{
   }catch(err){S.armed=null;render();toast(err.message,1)}
 });
 document.addEventListener('change',async e=>{
+  if(e.target.dataset&&e.target.dataset.msfield){const id=e.target.dataset.msid,f=e.target.dataset.msfield,v=e.target.value||null,m=S.milestones.find(x=>x.id===id);
+    if(m&&f==='start_date'&&v&&m.date&&v>m.date){toast('The start date is after the due date.',1);e.target.value=m.start;return}
+    if(m&&f==='target_date'&&v&&m.start&&m.start>v){toast('The due date is before the start date.',1);e.target.value=m.date;return}
+    return moveMilestone(id,{[f]:v},f==='target_date'?(v?'Moved to '+fmtDate(v):'Moved to Date to set'):'Start date saved')}
   if(e.target.dataset&&e.target.dataset.taskdone){const id=e.target.dataset.taskdone,v=e.target.checked;
     try{await write(sb.from('tasks').update({done:v}).eq('id',id));toast(v?'Task done':'Task reopened')}catch(err){toast(err.message,1)}return}
   if(e.target.dataset&&e.target.dataset.photoFor&&e.target.files[0]){
@@ -862,11 +901,14 @@ document.addEventListener('submit',async e=>{
       toast(remindAt&&new Date(remindAt)<new Date()?'Task added. The reminder time has already passed, so no reminder will be sent.':'Task added');
       ['tkTitle','tkTime','tkNotes'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
     }else if(f.id==='fMs'){
-      const row={title:d.title.trim(),target_date:d.date||null,status:d.status,category:d.category,description:(d.description||'').trim()};
+      if(d.start&&d.date&&d.start>d.date)throw new Error('The start date is after the due date.');
+      const row={title:d.title.trim(),start_date:d.start||null,target_date:d.date||null,status:d.status,category:d.category,description:(d.description||'').trim()};
       const id=f.dataset.id;
-      if(id){await write(sb.from('milestones').update(row).eq('id',id));S.editMs=null;render();toast('Milestone updated');return}
-      await write(sb.from('milestones').insert(row));toast('Milestone added');
-      ['msTitle','msDate','msDesc'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
+      if(id){S.editMs=null;S.msPrefillDate='';await moveMilestone(id,row,'Milestone updated');return}
+      const {data,error}=await sb.from('milestones').insert(row).select('id').single();if(error)throw new Error(friendly(error));
+      S.msPrefillDate='';['msTitle','msStart','msDate','msDesc'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
+      await loadAll();S.flashMs=data.id;render();document.getElementById('ms-'+data.id)?.scrollIntoView({behavior:'smooth',block:'center'});
+      setTimeout(()=>{S.flashMs=null;document.getElementById('ms-'+data.id)?.classList.remove('flash')},1600);toast('Milestone added');
     }else if(f.id==='fDist'){
       const row={name:d.name.trim(),country:(d.country||'').trim(),city:(d.city||'').trim(),contact_name:(d.contact||'').trim(),phone:(d.phone||'').trim(),email:(d.email||'').trim(),status:d.status,terms:(d.terms||'').trim(),last_contact:d.lastContact||null,next_step:(d.nextStep||'').trim(),notes:(d.notes||'').trim()};
       const id=f.dataset.id;
@@ -909,6 +951,22 @@ async function ask(q){
   }catch(err){ai.t='The assistant could not answer: '+(err.message||'unknown error')}
   busy=false;render();$('#askQ')?.focus();
 }
+
+/* ---------------- milestone drag and drop ---------------- */
+let dragMs=null;
+document.addEventListener('dragstart',e=>{const c=e.target.closest&&e.target.closest('[data-msdrag]');if(!c)return;
+  dragMs=c.dataset.msdrag;c.classList.add('dragging');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',dragMs)}catch(_){}});
+document.addEventListener('dragend',()=>{dragMs=null;document.querySelectorAll('.dragging,.drop-over').forEach(x=>x.classList.remove('dragging','drop-over'))});
+document.addEventListener('dragover',e=>{if(!dragMs)return;const z=e.target.closest('[data-msdrop]');if(!z)return;e.preventDefault();
+  document.querySelectorAll('.drop-over').forEach(x=>x!==z&&x.classList.remove('drop-over'));z.classList.add('drop-over')});
+document.addEventListener('drop',e=>{if(!dragMs)return;const z=e.target.closest('[data-msdrop]');if(!z)return;e.preventDefault();
+  const id=dragMs,m=S.milestones.find(x=>x.id===id);dragMs=null;z.classList.remove('drop-over');if(!m)return;
+  const target=z.dataset.msdrop;
+  if(target==='none'){if(m.date)moveMilestone(id,{target_date:null},'Moved to Date to set');return}
+  const k=Number(target);if(m.date&&qOf(m.date)===k)return;
+  const n=m.date?k-qOf(m.date):0,due=m.date?shiftQuarters(m.date,n):quarterStart(k),start=m.start&&m.date?shiftQuarters(m.start,n):'';
+  moveMilestone(id,{target_date:due,start_date:start||(m.date?null:m.start||null)},'Moved to '+fmtDate(due));
+});
 
 /* ---------------- start ---------------- */
 $('#signOut').onclick=async()=>{await sb.auth.signOut()};
