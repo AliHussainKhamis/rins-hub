@@ -19,10 +19,15 @@ const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
 const FORMATS=['Supermarket','To Go','Pharmacy','Other'];
 const DISPLAYS={stand:'Stand',hanger:'Hanger',none:'No display'};
+const TASK_CATS=['Sales','Operations','Production','Marketing','Finance & Admin','Meetings','Other'];
+const catKey=c=>({'Sales':'sales','Operations':'ops','Production':'prod','Marketing':'mkt','Finance & Admin':'fin','Admin':'fin','Meetings':'meet'}[c]||'other');
+const IMPORTANCE={high:'High',medium:'Medium',low:'Low'};
+const MS_STATUSES=['Planned','In progress','At risk','Done'];
+const REMIND_RULES={none:'No reminder',at:'At the due time',h1:'1 hour before',d1:'1 day before',m9:'On the day, 9:00'};
 const DIST_STATUSES=['Prospect','Contacted','Negotiating','Active','Paused'];
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -50,6 +55,8 @@ const FROM_DB={
   documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path,fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
   distributors:r=>({id:r.id,name:r.name,country:r.country||'',city:r.city||'',contact:r.contact_name||'',phone:r.phone||'',email:r.email||'',status:r.status||'Prospect',terms:r.terms||'',lastContact:r.last_contact||'',nextStep:r.next_step||'',notes:r.notes||'',createdAt:Date.parse(r.created_at)||0}),
   stock_levels:r=>({locationId:r.location_id,productId:r.product_id,keep:Number(r.keep_qty)||0,alert:Number(r.alert_qty)||0}),
+  tasks:r=>({id:r.id,title:r.title,date:r.due_date,time:r.due_time?r.due_time.slice(0,5):'',category:r.category||'Other',importance:r.importance||'medium',notes:r.notes||'',done:!!r.done,milestoneId:r.milestone_id||'',remindRule:r.remind_rule||'none',remindAt:r.remind_at,remindTg:!!r.remind_telegram,remindEmail:!!r.remind_email,remindedAt:r.reminded_at,createdAt:Date.parse(r.created_at)||0}),
+  milestones:r=>({id:r.id,title:r.title,date:r.target_date||'',category:r.category||'Operations',status:r.status||'Planned',description:r.description||'',createdAt:Date.parse(r.created_at)||0}),
   links:r=>({id:r.id,title:r.title,url:r.url,category:r.category||'Other',pinned:!!r.pinned,createdAt:Date.parse(r.created_at)||0})
 };
 async function fetchAll(table){
@@ -103,6 +110,8 @@ async function loadAll(){
     let documents=[],docsReady=true,distributors=[],distReady=true;
     try{documents=await fetchAll('documents')}catch(_){docsReady=false}
     try{distributors=await fetchAll('distributors')}catch(_){distReady=false}
+    let tasks=[],milestones=[],tasksReady=true,emailStatus=null;
+    try{[tasks,milestones]=await Promise.all([fetchAll('tasks'),fetchAll('milestones')]);const es=await sb.rpc('email_status');emailStatus=es.error?null:es.data}catch(_){tasksReady=false}
     let levels=[],levelsReady=true,alertLog=[],alertStatus=null;
     try{levels=await fetchAll('stock_levels')}catch(_){levelsReady=false}
     if(levelsReady){
@@ -110,7 +119,7 @@ async function loadAll(){
       alertLog=al.data||[];alertStatus=st.error?null:st.data;
     }
     await signProductImages(products);
-    Object.assign(S,{products,locations,movements,links,documents,docsReady,distributors,distReady,levels,levelsReady,alertLog,alertStatus,loaded:true});render();
+    Object.assign(S,{products,locations,movements,links,documents,docsReady,distributors,distReady,levels,levelsReady,alertLog,alertStatus,tasks,milestones,tasksReady,emailStatus,loaded:true});render();
   }catch(err){toast('Could not load your data: '+(err.message||'check your connection'),1)}
 }
 async function write(op){const {error}=await op;if(error)throw new Error(friendly(error));await loadAll()}
@@ -205,6 +214,8 @@ function viewOverview(){
         ${alerts.length?`<div class="alerts">${alerts.map(a=>`<div class="alert"><span><b>${esc(a.l.name)}</b> · ${esc(a.p.name)}</span><span class="pill p-${a.c}">${a.c==='out'?'Out of stock':int(a.q)+' left'}</span></div>`).join('')}</div>`
         :`<div class="alert"><span>${S.levels.length?'No branch is at its alert level.':'Set stock levels per branch on the Locations page to get alerts.'}</span><span class="pill p-ok">All good</span></div>`}
       </section>
+      ${S.tasks.length?`<section class="panel"><div class="panel-h"><h2>Upcoming tasks</h2><button class="btn ghost sm" data-go="calendar">Calendar</button></div>
+        <div class="task-list compact">${S.tasks.filter(t=>!t.done&&t.date<=isoDate(new Date(Date.now()+6*86400000))).sort((a,b)=>a.date.localeCompare(b.date)||taskSort(a,b)).slice(0,6).map(t=>taskRow(t,true)).join('')||'<div class="muted" style="font-size:13px">Nothing due in the next 7 days.</div>'}</div></section>`:''}
       <section class="panel"><div class="panel-h"><h2>Quick links</h2><button class="btn ghost sm" data-go="links">All links</button></div>
         ${quick.length?`<div class="alerts">${quick.map(k=>`<div class="alert"><a href="${esc(k.url)}" target="_blank" rel="noopener" style="color:var(--fg);font-weight:600">${esc(k.title)}</a><span class="muted" style="font-size:12px">${esc(k.category)}</span></div>`).join('')}</div>`
         :emptyBox('No pinned links','Pin your most used links on the Links page and they show up here.')}
@@ -549,26 +560,139 @@ function renderViewer(){
       `<div class="empty"><b>${esc(extOf(d))} files can't be previewed in the browser</b><br>Use Download to open it in Word, Excel or another app.</div>`}</div></div>`;
 }
 
+/* ---------- Calendar: tasks by importance and category, plus the milestone map ---------- */
+const isoDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const fmtDay=iso=>new Date(iso+'T00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+const IMP_RANK={high:0,medium:1,low:2};
+const taskSort=(a,b)=>(a.done-b.done)||IMP_RANK[a.importance]-IMP_RANK[b.importance]||(a.time||'99').localeCompare(b.time||'99')||a.title.localeCompare(b.title);
+function calState(){if(!S.cal){const t=new Date();S.cal={y:t.getFullYear(),m:t.getMonth(),sel:today()}}return S.cal}
+function computeRemindAt(date,time,rule){
+  if(!date||rule==='none')return null;
+  const [y,mo,d]=date.split('-').map(Number);const [hh,mm]=(time||'09:00').split(':').map(Number);
+  let at=new Date(y,mo-1,d,hh,mm);
+  if(rule==='h1')at=new Date(at.getTime()-3600000);
+  else if(rule==='d1')at=new Date(at.getTime()-86400000);
+  else if(rule==='m9')at=new Date(y,mo-1,d,9,0);
+  return at.toISOString();
+}
+const taskChip=t=>`<span class="tchip cat-${catKey(t.category)}${t.done?' done':''}" title="${esc(t.title)} · ${esc(IMPORTANCE[t.importance])} · ${esc(t.category)}">${t.importance==='high'?'<i class="imp">!</i>':''}${esc(t.title)}</span>`;
+function taskRow(t,showDate){
+  const ms=t.milestoneId?S.milestones.find(m=>m.id===t.milestoneId):null;
+  const remind=t.remindRule!=='none'&&(t.remindTg||t.remindEmail)?`<span class="muted task-rem">Reminder${t.remindedAt?' sent':''}: ${esc(REMIND_RULES[t.remindRule].toLowerCase())}${t.remindTg?' · Telegram':''}${t.remindEmail?' · Email':''}</span>`:'';
+  return `<div class="task cat-${catKey(t.category)}${t.done?' done':''}">
+    <input type="checkbox" class="t-done" data-taskdone="${esc(t.id)}" ${t.done?'checked':''} aria-label="Mark ${esc(t.title)} done">
+    <div class="task-main"><b>${esc(t.title)}</b>
+      <span class="task-meta"><span class="catdot"></span>${esc(t.category)} <span class="pill imp-${t.importance}">${IMPORTANCE[t.importance]}</span>${showDate?` <span class="mono">${esc(fmtDay(t.date))}</span>`:''}${t.time?` <span class="mono">${esc(t.time)}</span>`:''}${ms?` <span class="muted">◆ ${esc(ms.title)}</span>`:''}</span>
+      ${t.notes?`<span class="muted task-notes">${esc(t.notes)}</span>`:''}${remind}</div>
+    <div class="task-actions"><button class="x" data-edittask="${esc(t.id)}">Edit</button>${del('tasks',t.id)}</div></div>`;
+}
 function viewCalendar(){
-  const today=new Date(); const year=today.getFullYear(); const monthIndex=today.getMonth();
-  const first=new Date(year,monthIndex,1); const startDay=(first.getDay()+6)%7; const daysInMonth=new Date(year,monthIndex+1,0).getDate();
-  const actionMap={};
-  for(const v of S.movements){const d=(v.date||'').trim(); if(d){actionMap[d]=(actionMap[d]||0)+1;}}
-  const cells=[]; for(let i=0;i<startDay;i++)cells.push(''); for(let d=1;d<=daysInMonth;d++)cells.push(String(d));
-  while(cells.length%7!==0)cells.push('');
-  const rows=[]; for(let i=0;i<cells.length;i+=7)rows.push(cells.slice(i,i+7));
-  const monthName=new Date(year,monthIndex).toLocaleString('en-US',{month:'long',year:'numeric'});
-  return header('Calendar','Main actions this month')+
-  `<div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>${esc(monthName)}</h2></div>
-    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="cal-head">${d}</div>`).join('')}${rows.flatMap(w=>w.map(day=>{
-      if(!day){return '<div class="cal-day empty"></div>'}
-      const key=`${year}-${String(monthIndex+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; const count=actionMap[key]||0;
-      return `<div class="cal-day ${count?'has':''}"><span class="cal-date">${day}</span>${count?`<span class="pill p-ok">${int(count)} action${count===1?'':'s'}</span>`:''}</div>`;
-    })).join('')}</div>
+  const tabs=`<div class="seg" role="tablist"><button role="tab" aria-selected="${S.calTab==='calendar'}" data-caltab="calendar">Calendar</button><button role="tab" aria-selected="${S.calTab==='milestones'}" data-caltab="milestones">Milestone map</button></div>`;
+  if(!S.tasksReady)return header('Calendar','Plan and track',tabs)+`<div class="banner">Tasks and milestones aren't set up yet. Run <b>supabase/tasks-milestones.sql</b> in the Supabase SQL Editor, then reload.</div>`;
+  return S.calTab==='milestones'?viewMilestones(tabs):viewMonth(tabs);
+}
+function viewMonth(tabs){
+  const c=calState(),first=new Date(c.y,c.m,1),startDay=(first.getDay()+6)%7,days=new Date(c.y,c.m+1,0).getDate(),todayIso=today();
+  const byDay={};for(const t of S.tasks)(byDay[t.date]??=[]).push(t);
+  const msByDay={};for(const m of S.milestones)if(m.date)(msByDay[m.date]??=[]).push(m);
+  const mvByDay={};for(const v of S.movements)if(v.date)mvByDay[v.date]=(mvByDay[v.date]||0)+1;
+  const cells=[];for(let i=0;i<startDay;i++)cells.push(null);for(let d=1;d<=days;d++)cells.push(isoDate(new Date(c.y,c.m,d)));while(cells.length%7)cells.push(null);
+  const monthName=first.toLocaleString('en-US',{month:'long',year:'numeric'});
+  const sel=c.sel,selTasks=(byDay[sel]||[]).sort(taskSort),selMs=msByDay[sel]||[];
+  const open=S.tasks.filter(t=>!t.done&&t.date<=isoDate(new Date(Date.now()+13*86400000))).sort((a,b)=>a.date.localeCompare(b.date)||taskSort(a,b));
+  const overdue=open.filter(t=>t.date<todayIso),upcoming=open.filter(t=>t.date>=todayIso);
+  const e=S.editTask?S.tasks.find(t=>t.id===S.editTask):null;
+  const fv=(k,def='')=>esc(e?(e[k]??def):def);
+  return header('Calendar','Plan and track',tabs)+
+  `<div class="grid g-cal">
+   <section class="panel">
+    <div class="panel-h"><h2>${esc(monthName)}</h2><div class="chips"><button class="btn ghost sm" data-calnav="-1" aria-label="Previous month">‹</button><button class="btn ghost sm" data-calnav="0">Today</button><button class="btn ghost sm" data-calnav="1" aria-label="Next month">›</button></div></div>
+    <div class="calendar-grid">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="cal-head">${d}</div>`).join('')}${cells.map(iso=>{
+      if(!iso)return '<div class="cal-day empty"></div>';
+      const ts=(byDay[iso]||[]).sort(taskSort),ms=msByDay[iso]||[],mv=mvByDay[iso]||0,shown=ts.slice(0,3);
+      return `<button class="cal-day${iso===todayIso?' today':''}${iso===sel?' sel':''}" data-calday="${iso}" aria-label="${esc(fmtDay(iso))}: ${ts.length} task${ts.length===1?'':'s'}">
+        <span class="cal-date">${Number(iso.slice(8))}${mv?`<span class="mvdot" title="${mv} stock movement${mv===1?'':'s'}"></span>`:''}</span>
+        ${ms.map(m=>`<span class="mschip cat-${catKey(m.category)}">◆ ${esc(m.title)}</span>`).join('')}
+        ${shown.map(taskChip).join('')}${ts.length>3?`<span class="more">+${ts.length-3} more</span>`:''}</button>`}).join('')}</div>
+    <div class="legend">${TASK_CATS.map(k=>`<span class="cat-${catKey(k)}"><span class="catdot"></span>${esc(k)}</span>`).join('')}<span><i class="imp">!</i> High importance</span><span><span class="mvdot"></span> Stock activity</span></div>
    </section>
-   <section class="panel"><div class="panel-h"><h2>Recent actions</h2></div>
-    ${S.movements.length?`<div class="alerts">${[...S.movements].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.createdAt-a.createdAt).slice(0,8).map(v=>`<div class="alert"><span><b>${esc(TYPE_LABEL[v.type]||v.type)}</b> · ${esc(P(v.product)?.name||'Unknown')}</span><span class="muted">${esc(v.date)}</span></div>`).join('')}</div>`:emptyBox('No actions yet','Record sales or stock movements and they will appear here.')}
+   <div class="grid" style="align-content:start">
+    <section class="panel"><div class="panel-h"><h2>${esc(fmtDay(sel))}</h2><span class="muted" style="font-size:13px">${selTasks.length} task${selTasks.length===1?'':'s'}</span></div>
+     ${selMs.map(m=>`<div class="ms-inline cat-${catKey(m.category)}"><b>◆ ${esc(m.title)}</b> <span class="pill ms-${m.status.toLowerCase().replace(/\s/g,'')}">${esc(m.status)}</span></div>`).join('')}
+     ${selTasks.length?`<div class="task-list">${selTasks.map(t=>taskRow(t,false)).join('')}</div>`:`<div class="muted" style="font-size:13px">Nothing planned. Add a task below.</div>`}
+    </section>
+    <section class="panel"><div class="panel-h"><h2>${e?'Edit task':'Add a task'}</h2>${e?'<button class="btn ghost sm" data-canceledittask>Cancel</button>':''}</div>
+     <form class="f" id="fTask" data-id="${e?esc(e.id):''}">
+      <label>Task<input id="tkTitle" name="title" required value="${fv('title')}" placeholder="e.g. Deliver stand to Alosra Saar"></label>
+      <div class="row"><label>Date<input id="tkDate" type="date" name="date" required value="${e?esc(e.date):esc(sel)}"></label>
+      <label>Time<input id="tkTime" type="time" name="time" value="${fv('time')}"></label></div>
+      <div class="row"><label>Importance<select id="tkImp" name="importance">${Object.entries(IMPORTANCE).map(([k,v])=>`<option value="${k}" ${(e?e.importance:'medium')===k?'selected':''}>${v}</option>`).join('')}</select></label>
+      <label>Type of work<select id="tkCat" name="category">${TASK_CATS.map(k=>`<option ${(e?e.category:'Operations')===k?'selected':''}>${esc(k)}</option>`).join('')}</select></label></div>
+      <label>Milestone<select id="tkMs" name="milestone"><option value="">None</option>${S.milestones.map(m=>`<option value="${esc(m.id)}" ${e&&e.milestoneId===m.id?'selected':''}>${esc(m.title)}</option>`).join('')}</select></label>
+      <label>Notes<input id="tkNotes" name="notes" value="${fv('notes')}" placeholder="Details, contact, address"></label>
+      <fieldset class="levels"><legend>Reminder</legend>
+       <select id="tkRule" name="rule" aria-label="When to remind">${Object.entries(REMIND_RULES).map(([k,v])=>`<option value="${k}" ${(e?e.remindRule:'none')===k?'selected':''}>${v}</option>`).join('')}</select>
+       <div class="chips" style="margin-top:8px"><label class="check" style="margin:0"><input type="checkbox" id="tkTg" name="tg" ${!e||e.remindTg?'checked':''}> Telegram</label><label class="check" style="margin:0"><input type="checkbox" id="tkEm" name="em" ${e&&e.remindEmail?'checked':''}> Email${S.emailStatus&&S.emailStatus.to?` <span class="muted">(${esc(S.emailStatus.to)})</span>`:''}</label></div>
+      </fieldset>
+      <button class="btn" type="submit">${e?'Save changes':'Add task'}</button>
+     </form>
+    </section>
+   </div>
+  </div>
+  <section class="panel" style="margin-top:16px"><div class="panel-h"><h2>Next two weeks</h2><span class="muted" style="font-size:13px">${overdue.length?`<span class="cell-out">${overdue.length} overdue</span> · `:''}${upcoming.length} open</span></div>
+   ${open.length?`<div class="task-list">${[...overdue,...upcoming].map(t=>taskRow(t,true)).join('')}</div>`:emptyBox('Nothing open','Tasks for the next two weeks show here, with anything overdue first.')}
+  </section>
+  ${viewReminderSettings()}`;
+}
+function viewReminderSettings(){
+  const st=S.alertStatus,es=S.emailStatus;
+  const tg=st&&st.enabled&&st.configured?'<span class="pill p-ok">On</span>':'<span class="pill p-low">Off</span>';
+  const em=es&&es.configured?`<span class="pill p-ok">On</span> <span class="muted" style="font-size:13px">${esc(es.to)}</span>`:'<span class="pill p-low">Off</span> <span class="muted" style="font-size:13px">finish the email setup in the guide</span>';
+  return `<section class="panel" style="margin-top:16px"><div class="panel-h"><h2>Reminders</h2></div>
+   <div class="rem-grid"><div><b>Telegram</b> ${tg}<div style="margin-top:8px"><button class="btn ghost sm" data-testwa>Send test message</button></div></div>
+   <div><b>Email</b> ${em}<div style="margin-top:8px"><button class="btn ghost sm" data-testemail>Send test email</button></div></div></div>
+   <p class="muted" style="font-size:13px;margin:12px 0 0">Reminders are checked every minute and sent once. Changing a task's date, time or reminder sets it to send again.</p></section>`;
+}
+function viewMilestones(tabs){
+  const ms=[...S.milestones],e=S.editMs?ms.find(m=>m.id===S.editMs):null,fv=k=>esc(e?(e[k]??''):'');
+  const q=d=>{const dt=new Date(d+'T00:00');return `${dt.getFullYear()}-Q${Math.floor(dt.getMonth()/3)+1}`};
+  const qLabel=k=>{const [y,qq]=k.split('-Q');return `Q${qq} ${y}`};
+  const now=new Date(),curQ=`${now.getFullYear()}-Q${Math.floor(now.getMonth()/3)+1}`;
+  const groups={};for(const m of ms.filter(m=>m.date))(groups[q(m.date)]??=[]).push(m);
+  const keys=Object.keys(groups);if(!keys.includes(curQ))keys.push(curQ);keys.sort();
+  const undated=ms.filter(m=>!m.date);
+  const done=ms.filter(m=>m.status==='Done').length,pct=ms.length?Math.round(done/ms.length*100):0;
+  const tasksOf=m=>S.tasks.filter(t=>t.milestoneId===m.id);
+  const card=m=>{const ts=tasksOf(m),td=ts.filter(t=>t.done).length;
+    return `<button class="ms-card cat-${catKey(m.category)}${S.editMs===m.id?' editing':''}" data-editms="${esc(m.id)}">
+      <span class="ms-top"><span class="catdot"></span><span class="muted" style="font-size:12px">${esc(m.category)}</span><span class="pill ms-${m.status.toLowerCase().replace(/\s/g,'')}">${esc(m.status)}</span></span>
+      <b>${esc(m.title)}</b>
+      <span class="muted mono" style="font-size:12px">${m.date?esc(new Date(m.date+'T00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})):'Date to set'}</span>
+      ${ts.length?`<span class="ms-prog"><span class="bar"><i style="width:${Math.round(td/ts.length*100)}%"></i></span><span class="muted" style="font-size:12px">${td}/${ts.length} tasks</span></span>`:''}
+      ${m.description?`<span class="muted" style="font-size:12px">${esc(m.description)}</span>`:''}</button>`};
+  return header('Calendar','Milestone map',tabs)+
+  `<div class="kpis ms-kpis">
+    <div class="kpi hero"><div class="l">Roadmap progress</div><div class="v">${pct}<small>%</small></div><div class="s">${done} of ${ms.length} milestones done</div></div>
+    ${['In progress','At risk','Planned'].map(st=>`<div class="kpi"><div class="l">${st}</div><div class="v">${ms.filter(m=>m.status===st).length}</div><div class="s">milestone${ms.filter(m=>m.status===st).length===1?'':'s'}</div></div>`).join('')}
+  </div>
+  <div class="grid g-side">
+   <section class="panel"><div class="panel-h"><h2>Roadmap</h2><span class="muted" style="font-size:13px">Click a milestone to edit it</span></div>
+    <div class="roadmap-scroll"><div class="roadmap-cols">
+     ${keys.map(k=>`<div class="rm-col${k===curQ?' now':''}"><div class="rm-head">${qLabel(k)}${k===curQ?' <span class="pill p-in">Now</span>':''}</div>${(groups[k]||[]).sort((a,b)=>a.date.localeCompare(b.date)).map(card).join('')||'<span class="muted" style="font-size:12px">No milestones</span>'}</div>`).join('')}
+     ${undated.length?`<div class="rm-col undated"><div class="rm-head">Date to set</div>${undated.map(card).join('')}</div>`:''}
+    </div></div>
+   </section>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>${e?'Edit milestone':'Add a milestone'}</h2>${e?'<button class="btn ghost sm" data-canceleditms>Cancel</button>':''}</div>
+    <form class="f" id="fMs" data-id="${e?esc(e.id):''}">
+     <label>Milestone<input id="msTitle" name="title" required value="${fv('title')}" placeholder="e.g. Alosra listing live"></label>
+     <div class="row"><label>Target date<input id="msDate" type="date" name="date" value="${fv('date')}"></label>
+     <label>Status<select id="msStatus" name="status">${MS_STATUSES.map(st=>`<option ${(e?e.status:'Planned')===st?'selected':''}>${st}</option>`).join('')}</select></label></div>
+     <label>Type of work<select id="msCat" name="category">${TASK_CATS.map(k=>`<option ${(e?e.category:'Operations')===k?'selected':''}>${esc(k)}</option>`).join('')}</select></label>
+     <label>Description<textarea id="msDesc" name="description" rows="3">${fv('description')}</textarea></label>
+     <button class="btn" type="submit">${e?'Save changes':'Add milestone'}</button>
+     ${e?`<div style="display:flex;justify-content:flex-end">${del('milestones',e.id)}</div>`:''}
+    </form>
+    ${e&&tasksOf(e).length?`<h3 class="sub">Tasks for this milestone</h3><div class="task-list">${tasksOf(e).sort((a,b)=>a.date.localeCompare(b.date)).map(t=>taskRow(t,true)).join('')}</div>`:''}
    </section>
   </div>`;
 }
@@ -618,18 +742,18 @@ function render(){
   renderNav();
   const keep={};document.querySelectorAll('main input,main select,main textarea').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
-  const formKey=[S.editLoc,S.editProd,S.editDist].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
-  for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
+  const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
+  for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds|tk|ms)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.tab=t;S.armed=null;S.editLoc=null;S.editProd=null;S.editDist=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.tab=t;S.armed=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
-const TABLE_OF={distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
+const TABLE_OF={tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa]');if(!b)return;
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
@@ -642,6 +766,16 @@ document.addEventListener('click',async e=>{
     $('#mvType').value='transfer';syncMoveForm();$('#mvProd').value=pid;$('#mvTo').value=loc;if(wh)$('#mvFrom').value=wh.id;$('#mvQty').value=n;
     $('#mvNote').value='Refill';$('#fMove').scrollIntoView({behavior:'smooth',block:'center'});$('#mvQty').focus();
     toast(wh?'Delivery filled in. Check the details and save.':'Delivery filled in. Choose where the stock comes from, then save.');return}
+  if(b.dataset.caltab){S.calTab=b.dataset.caltab;S.editTask=null;S.editMs=null;render();return}
+  if(b.dataset.calnav!==undefined){const c=calState(),n=Number(b.dataset.calnav);if(n===0){const t=new Date();c.y=t.getFullYear();c.m=t.getMonth();c.sel=today()}else{const d=new Date(c.y,c.m+n,1);c.y=d.getFullYear();c.m=d.getMonth()}render();return}
+  if(b.dataset.calday){calState().sel=b.dataset.calday;if(!S.editTask){const el=$('#tkDate');if(el)el.value=b.dataset.calday}render();const dv=$('#tkDate');if(dv&&!S.editTask)dv.value=b.dataset.calday;if(innerWidth<980)$('.g-cal > .grid')?.scrollIntoView({behavior:'smooth'});return}
+  if(b.dataset.edittask){const t=S.tasks.find(x=>x.id===b.dataset.edittask);if(!t)return;S.editTask=t.id;S.armed=null;if(S.tab!=='calendar'||S.calTab!=='calendar'){S.tab='calendar';S.calTab='calendar'}const c=calState();c.sel=t.date;const d=new Date(t.date+'T00:00');c.y=d.getFullYear();c.m=d.getMonth();render();$('#fTask')?.scrollIntoView({behavior:'smooth',block:'center'});$('#tkTitle')?.focus();return}
+  if(b.dataset.canceledittask!==undefined){S.editTask=null;render();return}
+  if(b.dataset.editms){S.editMs=b.dataset.editms;S.armed=null;render();if(innerWidth<980)$('#fMs')?.scrollIntoView({behavior:'smooth'});return}
+  if(b.dataset.canceleditms!==undefined){S.editMs=null;render();return}
+  if(b.dataset.testemail!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_email');b.disabled=false;
+    if(error)return toast('Could not send: '+error.message,1);
+    return toast(data==='sent'?'Test email sent to '+(S.emailStatus?.to||'your inbox')+'. Check spam if it is not there in a minute.':'Email is not set up yet. Finish the setup steps first.',data!=='sent')}
   if(b.dataset.testwa!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_whatsapp');b.disabled=false;
     if(error)return toast('Could not send: '+error.message,1);
     return toast(data==='sent'?'Test message sent. It should arrive within a minute.':'Alerts are not set up yet. Finish the setup steps first.',data!=='sent')}
@@ -661,6 +795,8 @@ document.addEventListener('click',async e=>{
   }catch(err){S.armed=null;render();toast(err.message,1)}
 });
 document.addEventListener('change',async e=>{
+  if(e.target.dataset&&e.target.dataset.taskdone){const id=e.target.dataset.taskdone,v=e.target.checked;
+    try{await write(sb.from('tasks').update({done:v}).eq('id',id));toast(v?'Task done':'Task reopened')}catch(err){toast(err.message,1)}return}
   if(e.target.dataset&&e.target.dataset.photoFor&&e.target.files[0]){
     const id=e.target.dataset.photoFor,file=e.target.files[0];toast('Uploading photo…');
     try{await uploadProductPhoto(id,file);await loadAll();toast('Photo saved')}catch(err){toast(err.message,1)}
@@ -718,6 +854,21 @@ document.addEventListener('submit',async e=>{
       const {data,error}=await sb.from('products').insert(row).select('id').single();if(error)throw new Error(friendly(error));
       if(photo)try{await uploadProductPhoto(data.id,photo)}catch(err){await loadAll();throw new Error('Product added, but '+err.message.charAt(0).toLowerCase()+err.message.slice(1))}
       await loadAll();toast('Product added');['pdName','pdSku','pdBarcode','pdUnit'].forEach(id=>$('#'+id).value='');$('#pdPhoto').value='';
+    }else if(f.id==='fTask'){
+      const rule=d.rule||'none',remindAt=computeRemindAt(d.date,d.time,rule);
+      const row={title:d.title.trim(),due_date:d.date,due_time:d.time||null,category:d.category,importance:d.importance,notes:(d.notes||'').trim(),milestone_id:d.milestone||null,
+        remind_rule:rule,remind_at:remindAt,remind_telegram:rule!=='none'&&!!d.tg,remind_email:rule!=='none'&&!!d.em};
+      const id=f.dataset.id;
+      if(id){await write(sb.from('tasks').update(row).eq('id',id));S.editTask=null;render();toast('Task updated');return}
+      await write(sb.from('tasks').insert(row));
+      toast(remindAt&&new Date(remindAt)<new Date()?'Task added. The reminder time has already passed, so no reminder will be sent.':'Task added');
+      ['tkTitle','tkTime','tkNotes'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
+    }else if(f.id==='fMs'){
+      const row={title:d.title.trim(),target_date:d.date||null,status:d.status,category:d.category,description:(d.description||'').trim()};
+      const id=f.dataset.id;
+      if(id){await write(sb.from('milestones').update(row).eq('id',id));S.editMs=null;render();toast('Milestone updated');return}
+      await write(sb.from('milestones').insert(row));toast('Milestone added');
+      ['msTitle','msDate','msDesc'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
     }else if(f.id==='fDist'){
       const row={name:d.name.trim(),country:(d.country||'').trim(),city:(d.city||'').trim(),contact_name:(d.contact||'').trim(),phone:(d.phone||'').trim(),email:(d.email||'').trim(),status:d.status,terms:(d.terms||'').trim(),last_contact:d.lastContact||null,next_step:(d.nextStep||'').trim(),notes:(d.notes||'').trim()};
       const id=f.dataset.id;
