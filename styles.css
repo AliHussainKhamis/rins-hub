@@ -375,3 +375,10 @@ button.cal-day.sel{border-color:var(--navy);box-shadow:0 0 0 2px var(--navy)}
   .tl-period.left .tl-card::before{right:auto;left:-17px}
   .tl-period.left .tl-add{align-self:flex-start}
 }
+
+/* Document links */
+a.doc-open{color:inherit;text-decoration:none}
+.doc-ext.doc-link{display:flex;align-items:center;justify-content:center;background:var(--navy);color:var(--lime);flex-direction:column;gap:2px;font-size:9px;letter-spacing:.2px}
+.doc-ext.doc-link svg{width:18px;height:18px}
+.doc-row.editing{border-color:var(--lime);box-shadow:0 0 0 2px var(--lime)}
+.x[data-editdoc]:hover{background:var(--line);color:var(--fg)}

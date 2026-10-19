@@ -27,7 +27,7 @@ const REMIND_RULES={none:'No reminder',at:'At the due time',h1:'1 hour before',d
 const DIST_STATUSES=['Prospect','Contacted','Negotiating','Active','Paused'];
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={docMode:'link',editDoc:null,tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -52,7 +52,7 @@ const FROM_DB={
   products:r=>({id:r.id,name:r.name,sku:r.sku||'',line:r.line||'',price:r.price===null?null:Number(r.price),reorderAt:r.reorder_at,unit:r.unit||'',barcode:r.barcode||'',imagePath:r.image_path||'',createdAt:Date.parse(r.created_at)||0}),
   locations:r=>({id:r.id,name:r.name,type:r.type,chain:r.chain||'',format:r.format||'',display:r.display||(r.stand?'stand':'none'),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
   movements:r=>({id:r.id,type:r.type,date:r.date,product:r.product_id,from:r.from_loc,to:r.to_loc,qty:r.qty,price:r.price===null?null:Number(r.price),note:r.note||'',createdAt:Date.parse(r.created_at)||0}),
-  documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path,fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
+  documents:r=>({id:r.id,title:r.title,docType:r.doc_type||'Other',productId:r.product_id||'',reference:r.reference||'',notes:r.notes||'',filePath:r.file_path||'',linkUrl:r.link_url||'',fileName:r.file_name||'',fileType:r.file_type||'',fileSize:Number(r.file_size)||0,createdAt:Date.parse(r.created_at)||0}),
   distributors:r=>({id:r.id,name:r.name,country:r.country||'',city:r.city||'',contact:r.contact_name||'',phone:r.phone||'',email:r.email||'',status:r.status||'Prospect',terms:r.terms||'',lastContact:r.last_contact||'',nextStep:r.next_step||'',notes:r.notes||'',createdAt:Date.parse(r.created_at)||0}),
   stock_levels:r=>({locationId:r.location_id,productId:r.product_id,keep:Number(r.keep_qty)||0,alert:Number(r.alert_qty)||0}),
   tasks:r=>({id:r.id,title:r.title,date:r.due_date,time:r.due_time?r.due_time.slice(0,5):'',category:r.category||'Other',importance:r.importance||'medium',notes:r.notes||'',done:!!r.done,milestoneId:r.milestone_id||'',remindRule:r.remind_rule||'none',remindAt:r.remind_at,remindTg:!!r.remind_telegram,remindEmail:!!r.remind_email,remindedAt:r.reminded_at,createdAt:Date.parse(r.created_at)||0}),
@@ -491,8 +491,9 @@ function viewLinks(){
 }
 
 const fmtSize=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
-const fileKind=d=>/^image\//.test(d.fileType)?'image':(d.fileType==='application/pdf'||/\.pdf$/i.test(d.fileName))?'pdf':'other';
-const extOf=d=>((d.fileName.match(/\.([a-z0-9]{1,5})$/i)||[])[1]||'file').toUpperCase();
+const isOneDrive=u=>/(^|\.)(onedrive\.live\.com|1drv\.ms|sharepoint\.com)$/i.test((()=>{try{return new URL(u).hostname}catch(_){return ''}})());
+const fileKind=d=>d.linkUrl?'link':/^image\//.test(d.fileType)?'image':(d.fileType==='application/pdf'||/\.pdf$/i.test(d.fileName))?'pdf':'other';
+const extOf=d=>d.linkUrl?(isOneDrive(d.linkUrl)?'OneDrive':'Link'):((d.fileName.match(/\.([a-z0-9]{1,5})$/i)||[])[1]||'file').toUpperCase();
 function viewDocuments(){
   if(!S.docsReady)return header('Documents','Certificates and paperwork')+
     `<div class="banner">Document storage isn't set up yet. Run <b>supabase/documents.sql</b> in the Supabase SQL Editor, then reload this page.</div>`;
@@ -508,29 +509,40 @@ function viewDocuments(){
       <select id="dfProduct" aria-label="Filter by product"><option value="">All products</option><option value="general" ${f.product==='general'?'selected':''}>General documents</option>${opts(S.products,f.product)}</select>
       <select id="dfType" aria-label="Filter by type"><option value="">All types</option>${DOC_TYPES.map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}</select>
     </div>
-    ${docs.length?`<div class="doc-list">${docs.map(d=>`<div class="doc-row">
-      <button class="doc-open" data-view="${esc(d.id)}" aria-label="Open ${esc(d.title)}">
-        <span class="doc-ext doc-${fileKind(d)}">${esc(extOf(d))}</span>
+    ${docs.length?`<div class="doc-list">${docs.map(d=>`<div class="doc-row${S.editDoc===d.id?' editing':''}">
+      ${d.linkUrl?`<a class="doc-open" href="${esc(d.linkUrl)}" target="_blank" rel="noopener" aria-label="Open ${esc(d.title)} in ${isOneDrive(d.linkUrl)?'OneDrive':'a new tab'}">`:`<button class="doc-open" data-view="${esc(d.id)}" aria-label="Open ${esc(d.title)}">`}
+        <span class="doc-ext doc-${fileKind(d)}">${d.linkUrl?ICON_LINK:''}${esc(extOf(d))}</span>
         <span class="doc-main"><b>${esc(d.title)}</b><span class="muted">${esc(d.docType)} · ${esc(P(d.productId)?.name||'General')}${d.reference?` · <span class="mono">${esc(d.reference)}</span>`:''}</span>
         ${d.notes?`<span class="muted doc-notes">${esc(d.notes)}</span>`:''}</span>
-        <span class="muted doc-meta">${esc(new Date(d.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))}<br>${fmtSize(d.fileSize)}</span>
-      </button>${del('documents',d.id)}</div>`).join('')}</div>`
+        <span class="muted doc-meta">${esc(new Date(d.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))}<br>${d.linkUrl?'Opens in new tab ↗':fmtSize(d.fileSize)}</span>
+      ${d.linkUrl?'</a>':'</button>'}<button class="x" data-editdoc="${esc(d.id)}">Edit</button>${del('documents',d.id)}</div>`).join('')}</div>`
       :emptyBox('No matches','Clear the search or filters to see all documents.')}`
-    :emptyBox('No documents yet','Upload a barcode, import quotation, certificate or invoice using the form. Click any saved document to open it.')}
+    :emptyBox('No documents yet','Add a OneDrive link or upload a file using the form. Click any saved document to open it.')}
    </section>
-   <section class="panel"><div class="panel-h"><h2>Add a document</h2></div>
-    <form class="f" id="fDoc">
-      <label>File<input id="docFile" type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"></label>
-      <div class="muted" style="font-size:13px;margin-top:-6px">PDF, image, Word or Excel, up to ${MAX_FILE_MB} MB</div>
-      <div class="row"><label>Type<select id="docType" name="docType">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></label>
-      <label>Related product<select id="docProduct" name="product"><option value="">General document</option>${opts(S.products,'')}</select></label></div>
-      <label>Title<input id="docTitle" name="title" required placeholder="e.g. Blue pack barcode label"></label>
-      <div class="row"><label>Reference / code<input id="docRef" name="reference" placeholder="e.g. PB-BLUE-4 or IQ-2026-01"></label>
-      <label>Notes<input id="docNote" name="notes" placeholder="Supplier, expiry date, reminder"></label></div>
-      <button class="btn" type="submit">Upload document</button>
-    </form>
-   </section>
+   ${docForm()}
   </div>`;
+}
+
+const ICON_LINK='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 1 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 1 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 1 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/></svg>';
+function docForm(){
+  const e=S.editDoc?S.documents.find(x=>x.id===S.editDoc):null,v=k=>esc(e?(e[k]??''):'');
+  const mode=e?(e.linkUrl?'link':'file'):S.docMode;
+  return `<section class="panel" style="align-self:start" id="docFormPanel"><div class="panel-h"><h2>${e?'Edit document':'Add a document'}</h2>${e?'<button class="btn ghost sm" data-canceleditdoc>Cancel</button>':''}</div>
+    ${e?'':`<div class="seg" role="tablist" style="margin-bottom:14px"><button type="button" role="tab" aria-selected="${mode==='link'}" data-docmode="link">OneDrive link</button><button type="button" role="tab" aria-selected="${mode==='file'}" data-docmode="file">Upload a file</button></div>`}
+    <form class="f" id="fDoc" data-id="${e?esc(e.id):''}" data-mode="${mode}">
+      ${mode==='link'?`<label>Link<input id="docUrl" name="url" type="url" required value="${v('linkUrl')}" placeholder="https://1drv.ms/… or https://…sharepoint.com/…"></label>
+      <div class="muted" style="font-size:13px;margin-top:-6px">In OneDrive, right-click the file or folder, choose <b>Share</b> or <b>Copy link</b>, and paste it here.</div>`
+      :e?`<div class="muted" style="font-size:13px">File: <b>${esc(e.fileName)}</b> (${fmtSize(e.fileSize)}). To replace it, delete this document and upload the new file.</div>`
+      :`<label>File<input id="docFile" type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"></label>
+      <div class="muted" style="font-size:13px;margin-top:-6px">PDF, image, Word or Excel, up to ${MAX_FILE_MB} MB</div>`}
+      <div class="row"><label>Type<select id="docType" name="docType">${DOC_TYPES.map(t=>`<option ${e&&e.docType===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label>Related product<select id="docProduct" name="product"><option value="">General document</option>${opts(S.products,e?e.productId:'')}</select></label></div>
+      <label>Title<input id="docTitle" name="title" required value="${v('title')}" placeholder="e.g. Blue pack barcode label"></label>
+      <div class="row"><label>Reference / code<input id="docRef" name="reference" value="${v('reference')}" placeholder="e.g. PB-BLUE-4 or IQ-2026-01"></label>
+      <label>Notes<input id="docNote" name="notes" value="${v('notes')}" placeholder="Supplier, expiry date, reminder"></label></div>
+      <button class="btn" type="submit">${e?'Save changes':mode==='link'?'Save link':'Upload document'}</button>
+    </form>
+   </section>`;
 }
 
 /* Viewer: opens a stored document with a short-lived private link */
@@ -773,18 +785,18 @@ function render(){
   renderNav();
   const keep={};document.querySelectorAll('main input,main select,main textarea').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
   $('#main').innerHTML=VIEWS[S.tab]();
-  const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab,S.msPrefillDate].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
-  for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds|tk|ms)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
+  const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab,S.msPrefillDate,S.editDoc,S.docMode].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
+  for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds|tk|ms|doc)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.tab=t;S.armed=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.tab=t;S.armed=null;S.editDoc=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
 const TABLE_OF={tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd]');if(!b)return;
+  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd],[data-docmode],[data-editdoc],[data-canceleditdoc]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
@@ -804,6 +816,9 @@ document.addEventListener('click',async e=>{
   if(b.dataset.canceledittask!==undefined){S.editTask=null;render();return}
   if(b.dataset.editms){S.editMs=b.dataset.editms;S.armed=null;render();if(innerWidth<980)$('#fMs')?.scrollIntoView({behavior:'smooth'});return}
   if(b.dataset.canceleditms!==undefined){S.editMs=null;render();return}
+  if(b.dataset.docmode){S.docMode=b.dataset.docmode;render();return}
+  if(b.dataset.editdoc){S.editDoc=b.dataset.editdoc;S.armed=null;render();$('#docFormPanel')?.scrollIntoView({behavior:'smooth',block:'start'});$('#docTitle')?.focus();return}
+  if(b.dataset.canceleditdoc!==undefined){S.editDoc=null;render();return}
   if(b.dataset.msadd!==undefined){S.editMs=null;S.msPrefillDate=b.dataset.msadd==='none'?'':quarterStart(Number(b.dataset.msadd));render();
     const dt=$('#msDate');if(dt)dt.value=S.msPrefillDate;$('#msFormPanel')?.scrollIntoView({behavior:'smooth',block:'start'});$('#msTitle')?.focus();return}
   if(b.dataset.testemail!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_email');b.disabled=false;
@@ -822,7 +837,7 @@ document.addEventListener('click',async e=>{
       if(!TABLE_OF[coll])return;
       const doc=coll==='documents'?S.documents.find(x=>x.id===id):null,prodPhoto=coll==='products'?P(id)?.imagePath:null;
       await write(sb.from(TABLE_OF[coll]).delete().eq('id',id));
-      if(doc)await sb.storage.from('documents').remove([doc.filePath]);
+      if(doc&&doc.filePath)await sb.storage.from('documents').remove([doc.filePath]);
       if(prodPhoto)await sb.storage.from('documents').remove([prodPhoto]);
       toast('Deleted')}
   }catch(err){S.armed=null;render();toast(err.message,1)}
@@ -915,6 +930,12 @@ document.addEventListener('submit',async e=>{
       if(id){await write(sb.from('distributors').update(row).eq('id',id));S.editDist=null;render();toast('Distributor updated');return}
       await write(sb.from('distributors').insert(row));toast('Distributor added');
       ['dsName','dsCountry','dsCity','dsContact','dsPhone','dsEmail','dsTerms','dsLast','dsNext','dsNotes'].forEach(id=>$('#'+id).value='');$('#dsStatus').value='Prospect';
+    }else if(f.id==='fDoc'&&(f.dataset.id||f.dataset.mode==='link')){
+      const meta={title:d.title.trim(),doc_type:d.docType,product_id:d.product||null,reference:(d.reference||'').trim(),notes:(d.notes||'').trim()};
+      if(f.dataset.mode==='link'){const u=(d.url||'').trim();if(!/^https:\/\//i.test(u))throw new Error('Paste a full link starting with https://');meta.link_url=u}
+      if(f.dataset.id){await write(sb.from('documents').update(meta).eq('id',f.dataset.id));S.editDoc=null;render();toast('Document updated');return}
+      await write(sb.from('documents').insert(meta));toast(isOneDrive(meta.link_url)?'OneDrive link saved':'Link saved');
+      ['docTitle','docRef','docNote','docUrl'].forEach(id=>{const el=$('#'+id);if(el)el.value=''});
     }else if(f.id==='fDoc'){
       const file=$('#docFile').files[0];
       if(!file)throw new Error('Choose a file to upload.');

@@ -49,3 +49,11 @@ select v.* from (values
   ('pocket-bidet-black-4', 'Pocket Bidet Black', 'PB-BLACK-4', 'Pocket Bidet', 1.990, 10, 'Pack of 4 caps', 'PB-BLACK-4')
 ) as v(id, name, sku, line, price, reorder_at, unit, barcode)
 where not exists (select 1 from public.products p where p.sku = v.sku or p.id = v.id);
+
+-- 5. Links to files kept elsewhere (OneDrive, SharePoint, Google Drive...)
+--    A document is either an uploaded file (file_path) or a link (link_url).
+alter table public.documents add column if not exists link_url text not null default '';
+alter table public.documents alter column file_path drop not null;
+alter table public.documents drop constraint if exists documents_file_or_link;
+alter table public.documents add constraint documents_file_or_link
+  check (coalesce(file_path, '') <> '' or link_url <> '');
