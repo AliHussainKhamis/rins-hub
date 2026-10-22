@@ -10,11 +10,22 @@ const ICONS = {
   distributors:'<path d="M3 5h11v9H3zm11 3h4l3 3v3h-7zM6.5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
   documents:'<path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7zm1 7h-4V5h4zm-8 6h8v2H7zm0-4h10v2H7z"/>',
   calendar:'<path d="M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3zm13 8H4v10h16zM4 10h16V6H4z"/>',
-  analysis:'<path d="M4 18h16v2H4zm2-4h2v4H6zm4-6h2v10h-2zm4 3h2v7h-2zm4-8h2v15h-2z"/>',
+  finance:'<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15.9V19h-2v-1.1c-1.6-.3-2.9-1.3-3-3h2c.1.8.8 1.4 2 1.4 1.3 0 2-.6 2-1.3 0-.8-.6-1.1-2.2-1.5-2-.5-3.4-1.2-3.4-3 0-1.4 1.1-2.5 2.6-2.8V6.6h2v1.1c1.5.3 2.5 1.4 2.6 2.8h-2c-.1-.8-.7-1.3-1.7-1.3s-1.7.5-1.7 1.2c0 .7.6 1 2.2 1.4 2 .5 3.4 1.2 3.4 3.1 0 1.5-1.2 2.6-2.8 3z"/>',
+  transactions:'<path d="M7 7h11l-3-3 1.4-1.4L22 8l-5.6 5.4L15 12l3-3H7zm10 10H6l3 3-1.4 1.4L2 16l5.6-5.4L9 12l-3 3h11z"/>',
+  receivables:'<path d="M6 2h12a1 1 0 0 1 1 1v19l-3-2-2 2-2-2-2 2-2-2-3 2V3a1 1 0 0 1 1-1zm2 5v2h8V7zm0 4v2h8v-2zm0 4v2h5v-2z"/>',
+  statements:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM8 18v-4h2v4zm3 0v-7h2v7zm3 0v-5h2v5zm-1-9V3.5L18.5 9z"/>',
+  planning:'<path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8zm0 4a6 6 0 1 0 6 6h-2a4 4 0 1 1-4-4zm0 4a2 2 0 1 0 2 2l7-7-1.4-1.4z"/>',
   links:'<path d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 1 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 1 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 1 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/>',
   assistant:'<path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2zM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1z"/>'
 };
-const TABS=[['overview','Overview'],['inventory','Inventory'],['sales','Sales'],['locations','Locations'],['distributors','Distributors'],['products','Products'],['documents','Documents'],['calendar','Calendar'],['analysis','Analysis'],['links','Links'],['assistant','Assistant']];
+const NAV=[
+  {key:'home',label:'',tabs:[['overview','Overview']]},
+  {key:'ops',label:'Operations',tabs:[['inventory','Stock'],['sales','Sales'],['locations','Branches'],['products','Products'],['distributors','Partners']]},
+  {key:'fin',label:'Finance',tabs:[['finance','Finance overview'],['transactions','Transactions'],['receivables','Receivables & payables'],['statements','Statements'],['planning','Planning']]},
+  {key:'co',label:'Company',tabs:[['calendar','Calendar'],['documents','Documents'],['links','Links'],['assistant','Assistant']]}
+];
+const TABS=NAV.flatMap(g=>g.tabs);
+const groupOf=t=>(NAV.find(g=>g.tabs.some(x=>x[0]===t))||NAV[0]).key;
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
 const FORMATS=['Supermarket','To Go','Pharmacy','Other'];
@@ -27,7 +38,7 @@ const REMIND_RULES={none:'No reminder',at:'At the due time',h1:'1 hour before',d
 const DIST_STATUSES=['Prospect','Contacted','Negotiating','Active','Paused'];
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={docMode:'link',editDoc:null,tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={navGroup:null,docMode:'link',editDoc:null,tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -168,7 +179,14 @@ async function enter(session){
 }
 
 /* ---------------- views ---------------- */
-function renderNav(){$('#nav').innerHTML=TABS.map(([k,l])=>`<button data-tab="${k}" ${S.tab===k?'aria-current="page"':''}>${icon(k)}${l}</button>`).join('')}
+function renderNav(){
+  const cur=groupOf(S.tab),show=S.navGroup||(cur==='home'?'ops':cur);
+  const btn=([k,l])=>`<button data-tab="${k}" aria-label="${l}" ${S.tab===k?'aria-current="page"':''}>${icon(k)}<span>${l}</span></button>`;
+  $('#nav').innerHTML=`<div class="nav-switch" role="tablist" aria-label="Sections">${NAV.filter(g=>g.label).map(g=>`<button role="tab" data-navgroup="${g.key}" aria-selected="${show===g.key}">${g.key==='ops'?'Ops':g.label}</button>`).join('')}</div>`+
+    NAV.map(g=>`<div class="nav-group g-${g.key}${g.key==='home'||g.key===show?' show':''}">${g.label?`<div class="nav-h">${g.label}</div>`:''}${g.tabs.map(btn).join('')}</div>`).join('');
+  if(innerWidth<=760){const c=$('nav .nav-group.show:not(.g-home) [aria-current]'),strip=c&&c.parentElement;
+    if(strip)strip.scrollLeft=c.offsetLeft-strip.offsetLeft-(strip.clientWidth-c.offsetWidth)/2}
+}
 const header=(eyebrow,title,right='')=>`<div class="head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1></div>${right}</div>`;
 const emptyBox=(what,how)=>`<div class="empty"><b>${what}</b><br>${how}</div>`;
 const opts=(arr,sel,ph)=>(ph?`<option value="">${ph}</option>`:'')+byName(arr).map(o=>`<option value="${esc(o.id)}" ${o.id===sel?'selected':''}>${esc(o.name)}</option>`).join('');
@@ -198,7 +216,8 @@ function viewOverview(){
   const quick=S.links.filter(k=>k.pinned).slice(0,6);
   const mname=new Date().toLocaleString('en-US',{month:'long'});
   return header('RINS W.L.L','Overview',`<div class="chips"><button class="btn lime sm" data-go="sales">Record a sale</button><button class="btn ghost sm" data-go="inventory">Move stock</button></div>`)+
-  `<div class="kpis">
+  `<div class="ov-h"><span>Operations</span></div>
+  <div class="kpis">
     <div class="kpi hero"><div class="l">Revenue, ${mname}</div><div class="v">${bhd(rev)}<small>BHD</small></div><div class="s">${ms.length} sale${ms.length===1?'':'s'} recorded</div></div>
     <div class="kpi"><div class="l">Units sold, ${mname}</div><div class="v">${int(units)}</div><div class="s">All channels</div></div>
     <div class="kpi"><div class="l">Stock on hand</div><div class="v">${int(total)}</div><div class="s">Every location</div></div>
@@ -212,7 +231,7 @@ function viewOverview(){
     <div class="grid" style="align-content:start">
       <section class="panel"><div class="panel-h"><h2>Needs attention</h2></div>
         ${alerts.length?`<div class="alerts">${alerts.map(a=>`<div class="alert"><span><b>${esc(a.l.name)}</b> · ${esc(a.p.name)}</span><span class="pill p-${a.c}">${a.c==='out'?'Out of stock':int(a.q)+' left'}</span></div>`).join('')}</div>`
-        :`<div class="alert"><span>${S.levels.length?'No branch is at its alert level.':'Set stock levels per branch on the Locations page to get alerts.'}</span><span class="pill p-ok">All good</span></div>`}
+        :`<div class="alert"><span>${S.levels.length?'No branch is at its alert level.':'Set stock levels per branch on the Branches page to get alerts.'}</span><span class="pill p-ok">All good</span></div>`}
       </section>
       ${S.tasks.length?`<section class="panel"><div class="panel-h"><h2>Upcoming tasks</h2><button class="btn ghost sm" data-go="calendar">Calendar</button></div>
         <div class="task-list compact">${S.tasks.filter(t=>!t.done&&t.date<=isoDate(new Date(Date.now()+6*86400000))).sort((a,b)=>a.date.localeCompare(b.date)||taskSort(a,b)).slice(0,6).map(t=>taskRow(t,true)).join('')||'<div class="muted" style="font-size:13px">Nothing due in the next 7 days.</div>'}</div></section>`:''}
@@ -221,7 +240,9 @@ function viewOverview(){
         :emptyBox('No pinned links','Pin your most used links on the Links page and they show up here.')}
       </section>
     </div>
-  </div>`;
+  </div>
+  <div class="ov-h"><span>Finance</span><button class="btn ghost sm" data-go="finance">Finance overview</button></div>
+  <section class="panel soon"><span class="soon-ic">${icon('finance')}</span><div><h2>Cash, profit and money owed</h2><p class="muted" style="margin:6px 0 0;max-width:60ch">Cash today, profit this month, what retailers owe you and VAT progress will show here once the finance update is in.</p></div></section>`;
 }
 
 function viewRefillAndAlerts(){
@@ -236,7 +257,7 @@ function viewRefillAndAlerts(){
       <td><b>${esc(r.l.name)}</b><div><span class="pill p-${r.st==='under'?'transfer':r.st}">${pillTxt[r.st]}</span></div></td><td>${esc(r.p.name)}</td>
       <td class="num ${r.st==='out'?'cell-out':r.st==='low'?'cell-low':''}">${int(r.q)}</td><td class="num">${int(r.lv.keep)}</td><td class="num"><b>${int(r.send)}</b></td>
       <td class="num">${r.send?`<button class="btn ghost sm" data-refill="${esc(r.l.id)}|${esc(r.p.id)}|${r.send}">Record delivery</button>`:''}</td></tr>`).join('')}</tbody></table></div>`
-    :emptyBox(S.levels.length?'Every branch is stocked':'No stock levels set yet',S.levels.length?'Nothing needs refilling right now.':'Open a branch on the Locations page, click Edit, and set how much to keep and when to alert.')}
+    :emptyBox(S.levels.length?'Every branch is stocked':'No stock levels set yet',S.levels.length?'Nothing needs refilling right now.':'Open a branch on the Branches page, click Edit, and set how much to keep and when to alert.')}
    </section>
    <section class="panel" style="align-self:start"><div class="panel-h"><h2>Phone alerts</h2><div>${wa}</div></div>
     <p class="muted" style="font-size:13px;margin:0 0 12px">One message when a product drops to a branch's alert level. It won't repeat until the branch is refilled.</p>
@@ -251,9 +272,9 @@ function viewInventory(){
   const sm=stockMap(),locs=byName(S.locations),prods=byName(S.products);
   const locOrder=[...locs].sort((a,b)=>(a.type!=='warehouse')-(b.type!=='warehouse')||(a.chain||'').localeCompare(b.chain||'')||a.name.localeCompare(b.name));
   const matrix=prods.length&&locs.length?`<div class="tbl"><table class="stock-matrix"><thead><tr><th>Location</th>${prods.map(p=>`<th class="num">${esc(p.name)}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>${locOrder.map(l=>{let t=0;return `<tr><td><b>${esc(l.name)}</b>${l.chain?`<div class="muted" style="font-size:12px">${esc([l.chain,l.format].filter(Boolean).join(' · '))}</div>`:''}</td>${prods.map(p=>{const q=(sm[p.id]||{})[l.id]||0;t+=q;const st=levelState(q,LV(l.id,p.id)),c=st==='out'?'cell-out':st==='low'?'cell-low':'';return `<td class="num ${c}">${int(q)}</td>`}).join('')}<td class="num"><b>${int(t)}</b></td></tr>`}).join('')}</tbody><tfoot><tr><td><b>All locations</b></td>${prods.map(p=>`<td class="num"><b>${int(Object.values(sm[p.id]||{}).reduce((a,b)=>a+b,0))}</b></td>`).join('')}<td class="num"><b>${int(Object.values(sm).reduce((a,o)=>a+Object.values(o).reduce((x,y)=>x+y,0),0))}</b></td></tr></tfoot></table></div>`
-    :emptyBox('No products or locations yet','Add them on the Products and Locations pages first.');
+    :emptyBox('No products or locations yet','Add them on the Products and Branches pages first.');
   const log=[...S.movements].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.createdAt-a.createdAt);
-  return header('Inventory','Stock by location')+
+  return header('Operations','Stock')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Current stock</h2><span class="muted" style="font-size:13px">Amber is at the branch's alert level, red is empty</span></div>${matrix}</section>
    <section class="panel"><div class="panel-h"><h2>Record a stock movement</h2></div>
@@ -306,7 +327,7 @@ function viewSales(){
   const ms=all.filter(v=>(v.date||'').startsWith(month()));
   const byLoc={};for(const v of ms){const k=v.from||'?';byLoc[k]??={u:0,r:0};byLoc[k].u+=Number(v.qty)||0;byLoc[k].r+=saleValue(v)}
   const rows=Object.entries(byLoc).sort((a,b)=>b[1].r-a[1].r),max=Math.max(1,...rows.map(r=>r[1].r));
-  return header('Sales','Sales tracking')+
+  return header('Operations','Sales')+
   `<div class="grid g-sale">
    <section class="panel"><div class="panel-h"><h2>Sales this month by location</h2></div>
     ${rows.length?`<div class="tbl"><table><thead><tr><th>Location</th><th>Share</th><th class="num">Units</th><th class="num">BHD</th></tr></thead><tbody>${rows.map(([k,o])=>`<tr><td><b>${esc(L(k)?.name||'Unknown')}</b><div class="muted" style="font-size:12px">${esc(LOC_TYPES[L(k)?.type]||'')}</div></td><td style="width:30%"><div class="bar"><i style="width:${(o.r/max*100).toFixed(1)}%"></i></div></td><td class="num">${int(o.u)}</td><td class="num">${bhd(o.r)}</td></tr>`).join('')}</tbody></table></div>`
@@ -361,7 +382,7 @@ function viewLocations(){
   const e=S.editLoc?S.locations.find(l=>l.id===S.editLoc):null;
   const chains=[...new Set(S.locations.map(l=>l.chain).filter(Boolean))];
   const v=(k,def='')=>esc(e?(e[k]??def):def);
-  return header('Locations','Where stock lives',`<div class="chips"><span class="pill p-disp-stand">${nStand} stand${nStand===1?'':'s'}</span><span class="pill p-disp-hanger">${nHanger} hanger${nHanger===1?'':'s'}</span></div>`)+
+  return header('Operations','Branches',`<div class="chips"><span class="pill p-disp-stand">${nStand} stand${nStand===1?'':'s'}</span><span class="pill p-disp-hanger">${nHanger} hanger${nHanger===1?'':'s'}</span></div>`)+
   `<div class="grid g-side">
    <div class="grid" style="align-content:start">
    ${S.locations.length?order.map(g=>{const ls=groups[g].sort((a,b)=>fmtRank(a.format)-fmtRank(b.format)||a.name.localeCompare(b.name));
@@ -394,7 +415,7 @@ function viewLocations(){
 function viewProducts(){
   const prods=byName(S.products),e=S.editProd?P(S.editProd):null;
   const v=k=>esc(e?(e[k]??''):'');
-  return header('Products','Product list')+
+  return header('Operations','Products')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Products</h2><span class="muted" style="font-size:13px">${prods.length} product${prods.length===1?'':'s'}</span></div>
     ${prods.length?`<div class="prod-grid">${prods.map(p=>`<article class="prod-card${S.editProd===p.id?' editing':''}">
@@ -428,14 +449,14 @@ function viewProducts(){
 
 /* Distributors: partners who buy and resell RINS, tracked from first contact to active */
 function viewDistributors(){
-  if(!S.distReady)return header('Distributors','Distribution partners')+
+  if(!S.distReady)return header('Operations','Partners')+
     `<div class="banner">The distributors list isn't set up yet. Run <b>supabase/products-distributors.sql</b> in the Supabase SQL Editor, then reload this page.</div>`;
   const all=[...S.distributors].sort((a,b)=>DIST_STATUSES.indexOf(a.status)-DIST_STATUSES.indexOf(b.status)||a.name.localeCompare(b.name));
   const list=S.distFilter?all.filter(d=>d.status===S.distFilter):all;
   const e=S.editDist?S.distributors.find(d=>d.id===S.editDist):null;
   const v=k=>esc(e?(e[k]??''):'');
   const count=st=>all.filter(d=>d.status===st).length;
-  return header('Distributors','Distribution partners')+
+  return header('Operations','Partners')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Partners</h2>
      <div class="chips"><button class="chip${S.distFilter?'':' on'}" data-distfilter="">All ${all.length}</button>${DIST_STATUSES.map(st=>`<button class="chip${S.distFilter===st?' on':''}" data-distfilter="${st}">${st} ${count(st)}</button>`).join('')}</div></div>
@@ -475,7 +496,7 @@ function viewDistributors(){
 
 function viewLinks(){
   const groups={};for(const k of [...S.links].sort((a,b)=>String(a.title).localeCompare(String(b.title))))(groups[k.category||'Other']??=[]).push(k);
-  return header('Links','Everything in one place')+
+  return header('Company','Links')+
   `<div class="grid" style="gap:20px">
    ${Object.keys(groups).length?Object.entries(groups).map(([g,ks])=>`<section><div class="cat" style="margin-bottom:8px">${esc(g)}</div><div class="links">${ks.map(k=>`<div class="link"><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.title)}<span class="u">${esc(k.url)}</span></a><div style="display:flex;gap:2px;flex:none"><button class="x" data-pin="${esc(k.id)}">${k.pinned?'Pinned':'Pin'}</button>${del('links',k.id)}</div></div>`).join('')}</div></section>`).join('')
    :emptyBox('No links yet','Add Instagram, TikTok, supplier portals, your drive and anything else you open often.')}
@@ -495,13 +516,13 @@ const isOneDrive=u=>/(^|\.)(onedrive\.live\.com|1drv\.ms|sharepoint\.com)$/i.tes
 const fileKind=d=>d.linkUrl?'link':/^image\//.test(d.fileType)?'image':(d.fileType==='application/pdf'||/\.pdf$/i.test(d.fileName))?'pdf':'other';
 const extOf=d=>d.linkUrl?(isOneDrive(d.linkUrl)?'OneDrive':'Link'):((d.fileName.match(/\.([a-z0-9]{1,5})$/i)||[])[1]||'file').toUpperCase();
 function viewDocuments(){
-  if(!S.docsReady)return header('Documents','Certificates and paperwork')+
+  if(!S.docsReady)return header('Company','Documents')+
     `<div class="banner">Document storage isn't set up yet. Run <b>supabase/documents.sql</b> in the Supabase SQL Editor, then reload this page.</div>`;
   const f=S.docFilter,q=f.q.trim().toLowerCase();
   const docs=[...S.documents].sort((a,b)=>b.createdAt-a.createdAt).filter(d=>
     (!f.product||(f.product==='general'?!d.productId:d.productId===f.product))&&(!f.type||d.docType===f.type)&&
     (!q||[d.title,d.reference,d.notes,d.fileName,d.docType,P(d.productId)?.name].join(' ').toLowerCase().includes(q)));
-  return header('Documents','Certificates and paperwork')+
+  return header('Company','Documents')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Your documents</h2><span class="muted" style="font-size:13px">${S.documents.length} saved</span></div>
     ${S.documents.length?`<div class="doc-filters">
@@ -600,7 +621,7 @@ function taskRow(t,showDate){
 }
 function viewCalendar(){
   const tabs=`<div class="seg" role="tablist"><button role="tab" aria-selected="${S.calTab==='calendar'}" data-caltab="calendar">Calendar</button><button role="tab" aria-selected="${S.calTab==='milestones'}" data-caltab="milestones">Milestone map</button></div>`;
-  if(!S.tasksReady)return header('Calendar','Plan and track',tabs)+`<div class="banner">Tasks and milestones aren't set up yet. Run <b>supabase/tasks-milestones.sql</b> in the Supabase SQL Editor, then reload.</div>`;
+  if(!S.tasksReady)return header('Company','Calendar',tabs)+`<div class="banner">Tasks and milestones aren't set up yet. Run <b>supabase/tasks-milestones.sql</b> in the Supabase SQL Editor, then reload.</div>`;
   return S.calTab==='milestones'?viewMilestones(tabs):viewMonth(tabs);
 }
 function viewMonth(tabs){
@@ -615,7 +636,7 @@ function viewMonth(tabs){
   const overdue=open.filter(t=>t.date<todayIso),upcoming=open.filter(t=>t.date>=todayIso);
   const e=S.editTask?S.tasks.find(t=>t.id===S.editTask):null;
   const fv=(k,def='')=>esc(e?(e[k]??def):def);
-  return header('Calendar','Plan and track',tabs)+
+  return header('Company','Calendar',tabs)+
   `<div class="grid g-cal">
    <section class="panel">
     <div class="panel-h"><h2>${esc(monthName)}</h2><div class="chips"><button class="btn ghost sm" data-calnav="-1" aria-label="Previous month">‹</button><button class="btn ghost sm" data-calnav="0">Today</button><button class="btn ghost sm" data-calnav="1" aria-label="Next month">›</button></div></div>
@@ -703,7 +724,7 @@ function viewMilestones(tabs){
       <div class="tl-branch">${list.map(msCard).join('')}<button class="tl-add" data-msadd="${k}">+ Add to Q${qNum(k)+1} ${qYear(k)}</button></div>
     </div>`;
   }
-  return header('Calendar','Milestone map',tabs)+
+  return header('Company','Milestone map',tabs)+
   `<div class="kpis ms-kpis">
     <div class="kpi hero"><div class="l">Roadmap progress</div><div class="v">${pct}<small>%</small></div><div class="s">${done} of ${ms.length} milestones done</div></div>
     ${['In progress','At risk','Planned'].map(st=>`<div class="kpi"><div class="l">${st}</div><div class="v">${ms.filter(m=>m.status===st).length}</div><div class="s">milestone${ms.filter(m=>m.status===st).length===1?'':'s'}</div></div>`).join('')}
@@ -740,26 +761,17 @@ async function moveMilestone(id,patch,msg){
   catch(err){toast(err.message,1);render()}
 }
 
-function viewAnalysis(){
-  return header('Analysis','Business analysis')+
-  `<div class="grid g-side">
-   <section class="panel"><div class="panel-h"><h2>Analysis</h2></div>
-    <div class="empty"><b>Analysis coming soon</b><br>We will add more dashboards, trends and stock insights here as the hub grows.</div>
-   </section>
-   <section class="panel"><div class="panel-h"><h2>Planned insight areas</h2></div>
-    <ul class="roadmap" style="padding-left:18px;margin:0">
-      <li>Best-selling products and product lines</li>
-      <li>Low stock warnings and reorder recommendations</li>
-      <li>Store-by-store sales trends</li>
-      <li>Monthly revenue and movement summaries</li>
-    </ul>
-   </section>
-  </div>`;
-}
-
+const FIN_SOON={
+  finance:['Finance overview','Cash position, profit trend, margins per product, channel and branch, VAT watch and cash runway.'],
+  transactions:['Transactions','Money in and out with categories, payment accounts and receipt links, plus your assets (molds, machine, stands) and their depreciation.'],
+  receivables:['Receivables & payables','What each retailer owes you from consignment sales, with an overdue list, and what you owe suppliers.'],
+  statements:['Statements','Profit and loss, balance sheet and cash flow, by month and year, with Excel export for your accountant.'],
+  planning:['Planning','Budget against actual, a 12-month cash forecast, break-even and a price breakdown per pack.']};
+function viewFinanceSoon(k){const [t,d]=FIN_SOON[k];
+  return header('Finance',t)+`<section class="panel soon"><span class="soon-ic">${icon(k)}</span><div><h2>Coming in the finance update</h2><p class="muted" style="margin:6px 0 0;max-width:60ch">${esc(d)}</p></div></section>`}
 function viewAssistant(){
   const ex=['How much stock is in each store?','Which product sells best this month?','What should I restock this week?','Draft a restock message for Day2Day'];
-  return header('Assistant','RINS assistant')+
+  return header('Company','Assistant')+
   `<div class="grid g-side">
    <section class="panel"><div class="panel-h"><h2>Ask about your business</h2><span class="muted" style="font-size:13px">Reads the hub's data. It does not change anything.</span></div>
     <div class="chat" id="chat">${S.chat.length?S.chat.map(m=>`<div class="msg ${m.r}">${esc(m.t)}</div>`).join(''):`<div class="chips">${ex.map(e=>`<button class="chip" data-ask="${esc(e)}">${esc(e)}</button>`).join('')}</div>`}</div>
@@ -779,7 +791,7 @@ function viewAssistant(){
   </div>`;
 }
 
-const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,distributors:viewDistributors,documents:viewDocuments,calendar:viewCalendar,analysis:viewAnalysis,links:viewLinks,assistant:viewAssistant};
+const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,distributors:viewDistributors,documents:viewDocuments,calendar:viewCalendar,finance:()=>viewFinanceSoon('finance'),transactions:()=>viewFinanceSoon('transactions'),receivables:()=>viewFinanceSoon('receivables'),statements:()=>viewFinanceSoon('statements'),planning:()=>viewFinanceSoon('planning'),links:viewLinks,assistant:viewAssistant};
 function render(){
   if($('#app').hidden)return;
   renderNav();
@@ -790,13 +802,13 @@ function render(){
   syncMoveForm();updateSaleTotals();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.tab=t;S.armed=null;S.editDoc=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.navGroup=null;S.tab=t;S.armed=null;S.editDoc=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
 const TABLE_OF={tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd],[data-docmode],[data-editdoc],[data-canceleditdoc]');if(!b)return;
+  const b=e.target.closest('[data-navgroup],[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd],[data-docmode],[data-editdoc],[data-canceleditdoc]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
@@ -827,6 +839,7 @@ document.addEventListener('click',async e=>{
   if(b.dataset.testwa!==undefined){b.disabled=true;const {data,error}=await sb.rpc('send_test_whatsapp');b.disabled=false;
     if(error)return toast('Could not send: '+error.message,1);
     return toast(data==='sent'?'Test message sent. It should arrive within a minute.':'Alerts are not set up yet. Finish the setup steps first.',data!=='sent')}
+  if(b.dataset.navgroup){S.navGroup=b.dataset.navgroup;renderNav();return}
   if(b.dataset.tab)return go(b.dataset.tab);
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.ask){$('#askQ').value=b.dataset.ask;return ask(b.dataset.ask)}
