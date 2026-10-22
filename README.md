@@ -19,6 +19,7 @@ Stock is never typed in directly. Every delivery, transfer, return, sale and cor
 | `supabase/documents.sql` | Adds document storage and product barcodes (step 2b) |
 | `supabase/products-distributors.sql` | Adds product photos and the distributors table (step 2d) |
 | `supabase/tasks-milestones.sql` | Calendar tasks, Telegram reminders, milestone map (step 2f) |
+| `supabase/finance.sql` | Finance: money accounts, transactions, cost per pack, retailer margins, owner-only access (step 2g) |
 | `supabase/stock-alerts.sql` | Stock levels per branch and phone alerts (step 2e) |
 | `supabase/locations.sql` | Adds retailer, format and display to locations, plus the Alosra supermarkets (step 2c) |
 | `supabase/functions/assistant/index.ts` | The assistant (step 6) |
@@ -76,6 +77,13 @@ Set how much to keep and when to alert on each branch: Locations > Edit > Stock 
 
 1. Run `supabase/tasks-milestones.sql` the same way (after `stock-alerts.sql`). It adds tasks, milestones and a job that sends due reminders every minute.
 2. Reminders are sent on Telegram, using the bot from step 2e. (Email sending is built into the database but switched off in the hub.)
+
+### 2g. Finance
+
+1. Run `supabase/finance.sql` the same way. It adds money accounts (Bank, Cash, BenefitPay), income and expense categories, the transactions table, cost per pack on products and retailer margin and payment days on branches.
+2. Finance is visible to **owner** logins only. Everyone already in `hub_users` is an owner. Retailer logins added later get `role = 'retailer'` and never see the Finance section or any figures in it.
+3. In the hub: set the **cost per pack** on each product, the **retailer margin %** on each branch (tick "also apply" to copy it to the rest of the chain), then on Finance overview set the financial year and the date your books start. On Transactions, enter each account's balance on that date.
+4. Record money in and out from that date. Sales on the Sales page count automatically, so when a retailer pays you for those sales, record it as **Retailer payment for recorded sales** (cash only, not new revenue). Payments to Xtrude go under **Manufacturing (Xtrude)**: they become stock value and reach profit as packs sell.
 
 ### 3. Create your login and close sign-ups
 
