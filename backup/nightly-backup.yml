@@ -1,0 +1,60 @@
+# RINS Hub: nightly database backup
+# Lives in the PRIVATE backup repo at .github/workflows/nightly-backup.yml.
+# Every night it copies the hub's database (all tables, data, functions and
+# access rules) into backups/, keeps the last 60 nights, and commits them.
+# Needs one repository secret: SUPABASE_DB_URL (the Session pooler connection string).
+
+name: Nightly database backup
+
+on:
+  schedule:
+    - cron: "30 23 * * *"   # 02:30 Bahrain time
+  workflow_dispatch: {}      # "Run workflow" button for a backup right now
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy the database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::Add the SUPABASE_DB_URL secret (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          mkdir -p backups
+          f="backups/rins-hub-$(TZ=Asia/Bahrain date +%Y-%m-%d).sql.gz"
+          docker run --rm -e PGCONNECT_TIMEOUT=30 postgres:17 \
+            pg_dump "$DB_URL" --schema=public --no-owner --no-privileges --quote-all-identifiers \
+            | sed -e '/^CREATE SCHEMA "public";$/d' -e '/^COMMENT ON SCHEMA "public"/d' \
+            | gzip -9 > "$f.tmp"
+          tables=$(gzip -dc "$f.tmp" | grep -c '^CREATE TABLE' || true)
+          if [ "$tables" -lt 5 ]; then
+            echo "::error::The backup looks incomplete ($tables tables). Nothing was saved."
+            exit 1
+          fi
+          mv "$f.tmp" "$f"
+          echo "Saved $f with $tables tables ($(du -h "$f" | cut -f1))."
+          # keep the newest 60 backups
+          ls -1 backups/*.sql.gz | sort | head -n -60 | xargs -r rm -f
+
+      - name: Save to this repo
+        run: |
+          git config user.name "RINS Hub backup"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A backups
+          if git diff --cached --quiet; then echo "No change."; exit 0; fi
+          git commit -q -m "Backup $(TZ=Asia/Bahrain date '+%Y-%m-%d %H:%M')"
+          git push -q

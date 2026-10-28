@@ -16,16 +16,18 @@ const ICONS = {
   statements:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM8 18v-4h2v4zm3 0v-7h2v7zm3 0v-5h2v5zm-1-9V3.5L18.5 9z"/>',
   planning:'<path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8zm0 4a6 6 0 1 0 6 6h-2a4 4 0 1 1-4-4zm0 4a2 2 0 1 0 2 2l7-7-1.4-1.4z"/>',
   links:'<path d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 1 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 1 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 1 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/>',
+  excel:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm-1 7V3.5L18.5 9zM8.2 12h2l1.3 2.3 1.3-2.3h2l-2.3 3.5 2.4 3.5h-2l-1.4-2.4-1.4 2.4h-2l2.4-3.5z"/>',
   assistant:'<path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2zM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1z"/>'
 };
 const NAV=[
   {key:'home',label:'',tabs:[['overview','Overview']]},
   {key:'ops',label:'Operations',tabs:[['inventory','Stock'],['sales','Sales'],['locations','Branches'],['products','Products'],['distributors','Partners']]},
   {key:'fin',label:'Finance',tabs:[['finance','Finance overview'],['transactions','Transactions'],['receivables','Receivables & payables'],['statements','Statements'],['planning','Planning']]},
-  {key:'co',label:'Company',tabs:[['calendar','Calendar'],['documents','Documents'],['links','Links'],['assistant','Assistant']]}
+  {key:'co',label:'Company',tabs:[['calendar','Calendar'],['documents','Documents'],['links','Links'],['excel','Excel link'],['assistant','Assistant']]}
 ];
 const TABS=NAV.flatMap(g=>g.tabs);
 const isOwner=()=>S.role!=='retailer';
+const OWNER_TABS=['excel'];
 const groupOf=t=>(NAV.find(g=>g.tabs.some(x=>x[0]===t))||NAV[0]).key;
 const TYPE_LABEL={in:'Stock in',transfer:'Transfer',sale:'Sale',return:'Return',adjust:'Adjustment'};
 const LOC_TYPES={warehouse:'Warehouse',retail:'Retail store',online:'Online',b2b:'B2B client'};
@@ -39,7 +41,7 @@ const REMIND_RULES={none:'No reminder',at:'At the due time',h1:'1 hour before',d
 const DIST_STATUSES=['Prospect','Contacted','Negotiating','Active','Paused'];
 const DOC_TYPES=['Barcode','Import quotation','Certificate','Invoice','Contract','Supplier document','Other'];
 const MAX_FILE_MB=20;
-const S={navGroup:null,role:'owner',finReady:true,finSettings:null,finAccounts:[],finCats:[],finTx:[],txType:'out',txFilter:{month:'',account:'',kind:''},editTx:null,stTab:'pnl',stYear:null,docMode:'link',editDoc:null,tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
+const S={navGroup:null,xlKeys:[],xlReady:true,xlNewKey:null,role:'owner',finReady:true,finSettings:null,finAccounts:[],finCats:[],finTx:[],txType:'out',txFilter:{month:'',account:'',kind:''},editTx:null,stTab:'pnl',stYear:null,docMode:'link',editDoc:null,tasks:[],milestones:[],tasksReady:true,emailStatus:null,cal:null,calTab:'calendar',editTask:null,editMs:null,levels:[],levelsReady:true,alertLog:[],alertStatus:null,editLoc:null,editProd:null,editDist:null,distributors:[],distReady:true,distFilter:'',imgUrls:{},tab:'overview',products:[],locations:[],movements:[],links:[],documents:[],docsReady:true,docFilter:{q:'',product:'',type:''},viewer:null,chat:[],armed:null,loaded:false,user:null};
 try{const h=(location.hash||'').slice(1);if(TABS.some(t=>t[0]===h))S.tab=h;else{const t=localStorage.getItem('rins.tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t}}catch(e){}
 
 const $=s=>document.querySelector(s);
@@ -137,8 +139,10 @@ async function loadAll(){
     if(isOwner())try{[finAccounts,finCats,finTx]=await Promise.all(['fin_accounts','fin_categories','fin_transactions'].map(fetchAll));
       const fs=await sb.from('fin_settings').select('*').eq('id',1).single();if(fs.error)throw fs.error;
       finSettings={fyStartMonth:Number(fs.data.fy_start_month)||1,booksStart:fs.data.books_start||''}}catch(_){finReady=false}
+    let xlKeys=[],xlReady=true;
+    if(isOwner())try{const {data,error}=await sb.from('excel_keys').select('id,name,key_hint,can_write,can_finance,revoked,created_at,last_used_at').order('created_at');if(error)throw error;xlKeys=data}catch(_){xlReady=false}
     await signProductImages(products);
-    Object.assign(S,{finAccounts,finCats,finTx,finSettings,finReady,products,locations,movements,links,documents,docsReady,distributors,distReady,levels,levelsReady,alertLog,alertStatus,tasks,milestones,tasksReady,emailStatus,loaded:true});render();
+    Object.assign(S,{xlKeys,xlReady,finAccounts,finCats,finTx,finSettings,finReady,products,locations,movements,links,documents,docsReady,distributors,distReady,levels,levelsReady,alertLog,alertStatus,tasks,milestones,tasksReady,emailStatus,loaded:true});render();
   }catch(err){toast('Could not load your data: '+(err.message||'check your connection'),1)}
 }
 async function write(op){const {error}=await op;if(error)throw new Error(friendly(error));await loadAll()}
@@ -194,7 +198,7 @@ function renderNav(){
   const cur=groupOf(S.tab),show=S.navGroup||(cur==='home'?'ops':cur);
   const btn=([k,l])=>`<button data-tab="${k}" aria-label="${l}" ${S.tab===k?'aria-current="page"':''}>${icon(k)}<span>${l}</span></button>`;
   $('#nav').innerHTML=`<div class="nav-switch" role="tablist" aria-label="Sections">${NAV.filter(g=>g.label&&(g.key!=='fin'||isOwner())).map(g=>`<button role="tab" data-navgroup="${g.key}" aria-selected="${show===g.key}">${g.key==='ops'?'Ops':g.label}</button>`).join('')}</div>`+
-    NAV.filter(g=>g.key!=='fin'||isOwner()).map(g=>`<div class="nav-group g-${g.key}${g.key==='home'||g.key===show?' show':''}">${g.label?`<div class="nav-h">${g.label}</div>`:''}${g.tabs.map(btn).join('')}</div>`).join('');
+    NAV.filter(g=>g.key!=='fin'||isOwner()).map(g=>`<div class="nav-group g-${g.key}${g.key==='home'||g.key===show?' show':''}">${g.label?`<div class="nav-h">${g.label}</div>`:''}${g.tabs.filter(t=>!OWNER_TABS.includes(t[0])||isOwner()).map(btn).join('')}</div>`).join('');
   if(innerWidth<=760){const c=$('nav .nav-group.show:not(.g-home) [aria-current]'),strip=c&&c.parentElement;
     if(strip)strip.scrollLeft=c.offsetLeft-strip.offsetLeft-(strip.clientWidth-c.offsetWidth)/2}
 }
@@ -990,6 +994,47 @@ const FIN_SOON={
   planning:['Planning','Budget against actual, a 12-month cash forecast, break-even and a price breakdown per pack.']};
 function viewFinanceSoon(k){const [t,d]=FIN_SOON[k];
   return header('Finance',t)+`<section class="panel soon"><span class="soon-ic">${icon(k)}</span><div><h2>Coming in the finance update</h2><p class="muted" style="margin:6px 0 0;max-width:60ch">${esc(d)}</p></div></section>`}
+function viewExcel(){
+  const when=t=>t?new Date(t).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Never';
+  const access=k=>`${k.can_write?'Refresh and send':'Refresh only'}${k.can_finance?', with finance':', no finance'}`;
+  const nk=S.xlNewKey;
+  return header('Company','Excel link')+
+  (!S.xlReady?`<div class="banner">The Excel link isn't set up yet. Run <b>supabase/excel.sql</b> in the Supabase SQL Editor, then reload.</div>`:'')+
+  `<div class="grid g-side">
+   <div class="grid" style="align-content:start">
+    <section class="panel"><div class="panel-h"><h2>The workbook</h2></div>
+     <p class="muted" style="margin:0 0 12px;max-width:62ch">Excel keeps a copy of the hub for analysis and shareholder reports, and can send new sales, stock moves and money entries back. The hub stays the master: edit or delete past entries here. Works in Excel for Windows.</p>
+     <div class="chips" style="margin-bottom:14px"><a class="btn lime sm" href="excel/RINS-Hub.xlsx" download>Download workbook</a><a class="btn ghost sm" href="excel/RinsHub.bas" download="RinsHub.bas">Download code (RinsHub.bas)</a></div>
+     <ol class="xl-steps">
+      <li>Open <b>RINS-Hub.xlsx</b>, then <b>File › Save As › Excel Macro-Enabled Workbook (.xlsm)</b>, saved in your OneDrive.</li>
+      <li>Press <b>Alt+F11</b>, then <b>File › Import File…</b> and choose <b>RinsHub.bas</b>. Close that window and save.</li>
+      <li>Press <b>Alt+F8</b>, choose <b>SetupButtons</b>, click <b>Run</b>.</li>
+      <li>Create a key below, click <b>Set my key</b> in Excel and paste it. Then <b>Refresh from hub</b>.</li>
+     </ol>
+    </section>
+    <section class="panel"><div class="panel-h"><h2>Excel keys</h2><span class="muted" style="font-size:13px">${S.xlKeys.filter(k=>!k.revoked).length} active</span></div>
+     ${S.xlKeys.length?`<div class="tbl"><table><thead><tr><th>Name</th><th>Access</th><th>Last used</th><th></th></tr></thead><tbody>${S.xlKeys.map(k=>`<tr class="${k.revoked?'xl-off':''}">
+       <td><b>${esc(k.name)}</b><div class="muted mono" style="font-size:12px">ends …${esc(k.key_hint)}</div></td>
+       <td>${esc(access(k))}${k.revoked?' <span class="pill p-out">Off</span>':''}</td>
+       <td style="white-space:nowrap">${esc(when(k.last_used_at))}</td>
+       <td class="num" style="white-space:nowrap"><button class="x" data-xltoggle="${esc(k.id)}">${k.revoked?'Switch on':'Switch off'}</button>${del('excel_keys',k.id)}</td></tr>`).join('')}</tbody></table></div>`
+     :emptyBox('No keys yet','Create one for yourself on the right. Give each person their own key so you can switch one off without affecting the others.')}
+    </section>
+   </div>
+   <section class="panel" style="align-self:start"><div class="panel-h"><h2>Create a key</h2></div>
+    ${nk?`<div class="xl-newkey"><p style="margin:0"><b>Copy this key now.</b> It is shown only once. In Excel click <b>Set my key</b> and paste it.</p>
+      <div class="xl-keybox"><code id="xlKeyText">${esc(nk)}</code><button class="btn sm" type="button" data-xlcopy>Copy</button></div>
+      <button class="btn ghost sm" type="button" data-xldone>Done, I've copied it</button></div>`
+    :`<form class="f" id="fXlKey">
+      <label>Who is it for<input id="xkName" name="name" required placeholder="e.g. Ali laptop, Shareholder – Hassan"></label>
+      <label class="check"><input type="checkbox" id="xkWrite" name="write"> Can send new entries (otherwise refresh only)</label>
+      <label class="check"><input type="checkbox" id="xkFin" name="fin"> Include finance (transactions, accounts, profit and loss)</label>
+      <button class="btn" type="submit" ${S.xlReady?'':'disabled'}>Create key</button>
+     </form>
+     <p class="muted" style="font-size:13px;margin:12px 0 0">For shareholders: refresh only, with finance. For staff: send entries, no finance. A key works until you switch it off here.</p>`}
+   </section>
+  </div>`;
+}
 function viewAssistant(){
   const ex=['How much stock is in each store?','Which product sells best this month?','What should I restock this week?','Draft a restock message for Day2Day'];
   return header('Company','Assistant')+
@@ -1012,25 +1057,25 @@ function viewAssistant(){
   </div>`;
 }
 
-const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,distributors:viewDistributors,documents:viewDocuments,calendar:viewCalendar,finance:viewFinanceOverview,transactions:viewTransactions,receivables:()=>viewFinanceSoon('receivables'),statements:viewStatements,planning:()=>viewFinanceSoon('planning'),links:viewLinks,assistant:viewAssistant};
+const VIEWS={overview:viewOverview,inventory:viewInventory,sales:viewSales,locations:viewLocations,products:viewProducts,distributors:viewDistributors,documents:viewDocuments,calendar:viewCalendar,finance:viewFinanceOverview,transactions:viewTransactions,receivables:()=>viewFinanceSoon('receivables'),statements:viewStatements,planning:()=>viewFinanceSoon('planning'),links:viewLinks,excel:viewExcel,assistant:viewAssistant};
 function render(){
   if($('#app').hidden)return;
   renderNav();
   const keep={};document.querySelectorAll('main input,main select,main textarea').forEach(el=>{if(el.id&&el.type!=='file')keep[el.id]=el.value});
-  if(!isOwner()&&groupOf(S.tab)==='fin')S.tab='overview';
+  if(!isOwner()&&(groupOf(S.tab)==='fin'||OWNER_TABS.includes(S.tab)))S.tab='overview';
   $('#main').innerHTML=VIEWS[S.tab]();
   const formKey=[S.editLoc,S.editProd,S.editDist,S.editTask,S.editMs,S.calTab,S.msPrefillDate,S.editDoc,S.docMode,S.editTx,S.txType].join('|'),formChanged=S._formKey!==formKey;S._formKey=formKey;
   for(const [id,v] of Object.entries(keep)){if(formChanged&&/^(lc|pd|ds|tk|ms|doc|tx)/.test(id))continue;const el=document.getElementById(id);if(el&&v!=='')el.value=v}
   syncMoveForm();updateSaleTotals();syncTxHint();
   const c=$('#chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function go(t){S.navGroup=null;S.tab=t;S.armed=null;S.editDoc=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;S.editTx=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
+function go(t){S.navGroup=null;S.xlNewKey=null;S.tab=t;S.armed=null;S.editDoc=null;S.editLoc=null;S.editProd=null;S.editDist=null;S.editTask=null;S.editMs=null;S.editTx=null;try{localStorage.setItem('rins.tab',t)}catch(e){}render();window.scrollTo(0,0)}
 
 /* ---------------- events ---------------- */
-const TABLE_OF={fin_transactions:'fin_transactions',tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
+const TABLE_OF={excel_keys:'excel_keys',fin_transactions:'fin_transactions',tasks:'tasks',milestones:'milestones',distributors:'distributors',products:'products',locations:'locations',movements:'movements',links:'links',documents:'documents'};
 document.addEventListener('click',async e=>{
   if(e.target.closest('[data-close-viewer]')||e.target.id==='viewer')return closeViewer();
-  const b=e.target.closest('[data-navgroup],[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd],[data-docmode],[data-editdoc],[data-canceleditdoc],[data-edittx],[data-canceledittx],[data-txtype],[data-sttab]');if(!b)return;
+  const b=e.target.closest('[data-navgroup],[data-tab],[data-go],[data-del],[data-pin],[data-ask],[data-view],[data-editloc],[data-canceledit],[data-editprod],[data-canceleditprod],[data-editdist],[data-canceleditdist],[data-distfilter],[data-refill],[data-testwa],[data-testemail],[data-caltab],[data-calnav],[data-calday],[data-edittask],[data-canceledittask],[data-editms],[data-canceleditms],[data-msadd],[data-docmode],[data-editdoc],[data-canceleditdoc],[data-edittx],[data-canceledittx],[data-txtype],[data-sttab],[data-xltoggle],[data-xlcopy],[data-xldone]');if(!b)return;
   if(b.dataset.view)return openDoc(b.dataset.view);
   if(b.dataset.editloc!==undefined){S.editLoc=b.dataset.editloc;S.armed=null;render();if(innerWidth<980)$('#fLoc')?.scrollIntoView({behavior:'smooth'});$('#lcName')?.focus();return}
   if(b.dataset.canceledit!==undefined){S.editLoc=null;render();return}
@@ -1053,6 +1098,9 @@ document.addEventListener('click',async e=>{
   if(b.dataset.edittx){const t=S.finTx.find(x=>x.id===b.dataset.edittx);if(!t)return;S.editTx=t.id;S.txType=t.type;S.armed=null;render();$('#txFormPanel')?.scrollIntoView({behavior:'smooth',block:'start'});$('#txAmount')?.focus();return}
   if(b.dataset.canceledittx!==undefined){S.editTx=null;render();return}
   if(b.dataset.txtype){if(S.editTx){const t=S.finTx.find(x=>x.id===S.editTx);if(t&&t.type!==b.dataset.txtype)return toast('To change the type, delete this entry and record it again.',1)}S.txType=b.dataset.txtype;render();return}
+  if(b.dataset.xlcopy!==undefined){const t=$('#xlKeyText')?.textContent||'';try{await navigator.clipboard.writeText(t);toast('Key copied')}catch(_){const r=document.createRange();r.selectNodeContents($('#xlKeyText'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);toast('Press Ctrl+C to copy the selected key')}return}
+  if(b.dataset.xldone!==undefined){S.xlNewKey=null;render();return}
+  if(b.dataset.xltoggle){const k=S.xlKeys.find(x=>x.id===b.dataset.xltoggle);if(!k)return;const msg=k.revoked?'Key switched on':'Key switched off. Excel can no longer use it.';try{await write(sb.from('excel_keys').update({revoked:!k.revoked}).eq('id',k.id));toast(msg)}catch(err){toast(err.message,1)}return}
   if(b.dataset.sttab){S.stTab=b.dataset.sttab;render();return}
   if(b.dataset.docmode){S.docMode=b.dataset.docmode;render();return}
   if(b.dataset.editdoc){S.editDoc=b.dataset.editdoc;S.armed=null;render();$('#docFormPanel')?.scrollIntoView({behavior:'smooth',block:'start'});$('#docTitle')?.focus();return}
@@ -1207,6 +1255,10 @@ document.addEventListener('submit',async e=>{
       if(f.dataset.id){await write(sb.from('fin_transactions').update(row).eq('id',f.dataset.id));S.editTx=null;render();toast('Entry updated');return}
       await write(sb.from('fin_transactions').insert(row));toast((type==='in'?'Money in':type==='out'?'Money out':'Transfer')+' saved: '+bhd(amount)+' BHD');
       ['txAmount','txWho','txDesc','txRef','txLink'].forEach(x=>{const el=$('#'+x);if(el)el.value=''});
+    }else if(f.id==='fXlKey'){
+      const {data,error}=await sb.rpc('create_excel_key',{p_name:d.name.trim(),p_can_write:!!d.write,p_can_finance:!!d.fin});
+      if(error)throw new Error(error.message);
+      S.xlNewKey=data;await loadAll();toast('Key created');
     }else if(f.id==='fAcc'){
       await write(sb.from('fin_accounts').insert({name:d.name.trim(),kind:d.kind}));toast('Account added');$('#acName').value='';
     }else if(f.id.startsWith('acc-')){
